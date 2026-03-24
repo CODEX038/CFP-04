@@ -1,0 +1,48 @@
+.otp-grid {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.otp-cell {
+  width: 48px;
+  height: 56px;
+  border: 2px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+  color: #111827;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  font-family: "Courier New", monospace;
+}
+
+.otp-cell:focus {
+  border-color: #b8860b;
+  box-shadow: 0 0 0 3px rgba(184, 134, 11, 0.15);
+  transform: scale(1.05);
+}
+
+.otp-cell--filled {
+  border-color: #1a1a2e;
+  background: #f9f5eb;
+}
+
+.otp-cell--disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-width: 400px) {
+  .otp-cell {
+    width: 40px;
+    height: 48px;
+    font-size: 18px;
+  }
+  .otp-grid {
+    gap: 6px;
+  }
+}

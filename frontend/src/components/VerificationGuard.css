@@ -1,0 +1,18 @@
+.vguard-loading {
+  display: flex;
+  justify-content: center;
+  padding: 64px 0;
+}
+
+.vguard-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #b8860b;
+  border-radius: 50%;
+  animation: vguard-spin 0.7s linear infinite;
+}
+
+@keyframes vguard-spin {
+  to { transform: rotate(360deg); }
+}

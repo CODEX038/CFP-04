@@ -1,0 +1,38 @@
+.resend-wrap {
+  text-align: center;
+  margin-top: 12px;
+}
+
+.resend-timer {
+  color: #6b7280;
+  font-size: 14px;
+  margin: 0;
+}
+
+.resend-timer strong {
+  color: #1a1a2e;
+}
+
+.resend-btn {
+  background: none;
+  border: none;
+  color: #b8860b;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.resend-btn:hover:not(:disabled) {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.resend-btn--loading {
+  opacity: 0.5;
+  cursor: wait;
+}

@@ -1,0 +1,230 @@
+/* Verification.css — shared styles for EmailVerification & PhoneVerification */
+
+.verify-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f0e8;
+  padding: 24px;
+  font-family: "Georgia", serif;
+}
+
+.verify-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.1);
+  padding: 48px 40px;
+  width: 100%;
+  max-width: 440px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.verify-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.verify-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+}
+
+.verify-header h1 {
+  font-size: 26px;
+  color: #1a1a2e;
+  margin: 0 0 8px;
+  letter-spacing: -0.5px;
+}
+
+.verify-subtitle {
+  color: #6b7280;
+  font-size: 15px;
+  margin: 0;
+}
+
+/* ── Progress dots ──────────────────────────────────────────────────────── */
+.verify-progress {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.verify-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.verify-dot--active {
+  background: #b8860b;
+  transform: scale(1.25);
+}
+
+.verify-dot--done {
+  background: #059669;
+}
+
+/* ── Alerts ─────────────────────────────────────────────────────────────── */
+.verify-alert {
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.verify-alert--error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.verify-alert--success {
+  background: #f0fdf4;
+  color: #065f46;
+  border: 1px solid #bbf7d0;
+}
+
+/* ── Form ───────────────────────────────────────────────────────────────── */
+.verify-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.verify-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.verify-field label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.verify-field-hint {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.verify-field input[type="email"],
+.verify-field input[type="tel"] {
+  padding: 12px 14px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: inherit;
+}
+
+.verify-field input[type="tel"] {
+  font-family: "Courier New", monospace;
+  letter-spacing: 1px;
+}
+
+.verify-field input:focus {
+  border-color: #b8860b;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.verify-btn-primary {
+  padding: 13px;
+  background: #1a1a2e;
+  color: #e2c27d;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s, transform 0.1s;
+  letter-spacing: 0.3px;
+  text-decoration: none;
+}
+
+.verify-btn-primary:hover:not(:disabled) {
+  background: #2d2d4e;
+  transform: translateY(-1px);
+}
+
+.verify-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.verify-btn-link {
+  /* for <Link> rendered as a button */
+  display: flex;
+  text-align: center;
+  margin-top: 16px;
+}
+
+.verify-btn-ghost {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  padding: 4px;
+  transition: color 0.15s;
+}
+
+.verify-btn-ghost:hover {
+  color: #374151;
+}
+
+/* ── Spinner ────────────────────────────────────────────────────────────── */
+.verify-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(226, 194, 125, 0.3);
+  border-top-color: #e2c27d;
+  border-radius: 50%;
+  animation: verify-spin 0.6s linear infinite;
+  display: inline-block;
+}
+
+@keyframes verify-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Done state ─────────────────────────────────────────────────────────── */
+.verify-done {
+  text-align: center;
+  padding: 16px 0;
+}
+
+.verify-checkmark {
+  width: 64px;
+  height: 64px;
+  background: #d1fae5;
+  color: #065f46;
+  border-radius: 50%;
+  font-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+
+.verify-done p {
+  color: #374151;
+  line-height: 1.6;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .verify-card {
+    padding: 32px 20px;
+  }
+}
