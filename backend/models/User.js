@@ -17,7 +17,7 @@ const UserSchema = new mongoose.Schema(
     email: {
       type:      String,
       required:  [true, 'Email is required'],
-      unique:    true,
+      unique:    true,          // ✅ this alone creates the index — no schema.index() needed
       lowercase: true,
       trim:      true,
       match:     [/^\S+@\S+\.\S+$/, 'Please enter a valid email address'],
@@ -93,9 +93,9 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true }
 )
 
-// ── Only email needs a unique index ──────────────────────────────────────────
-UserSchema.index({ email: 1 })
-// Phone index for fast lookup — NOT unique (unverified duplicates allowed)
+// ── Indexes ───────────────────────────────────────────────────────────────────
+// ❌ REMOVED: UserSchema.index({ email: 1 }) — duplicate, unique:true above already creates it
+// ✅ Phone compound index for fast lookup — NOT unique (unverified duplicates allowed)
 UserSchema.index({ phone: 1, phoneVerified: 1 })
 
 // ── Hash password before save ─────────────────────────────────────────────────

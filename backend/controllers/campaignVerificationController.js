@@ -1,25 +1,15 @@
-/**
- * campaignVerificationController.js
- *
- * FIXES:
- * 1. uploadCampaignDocuments now saves docs to MongoDB even if Cloudinary fails
- *    (falls back to local /uploads/campaign-docs/ URL)
- * 2. getAllCampaignsForAdmin correctly populates creator from owner wallet
- * 3. All admin panel functions exported correctly
- */
-
-import Campaign  from '../models/Campaign.js'
-import User      from '../models/User.js'
-import path      from 'path'
+import Campaign from '../models/Campaign.js'
+import User     from '../models/User.js'
+import path     from 'path'
+import { notifyUserCampaignVerified } from '../services/notificationService.js'
 
 // ── Helper: try Cloudinary, fall back to local path ──────────────────────────
 async function resolveFileUrl(file) {
-  // Try Cloudinary only if credentials are properly set
   const { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } = process.env
   const cloudinaryReady =
     CLOUDINARY_CLOUD_NAME &&
     CLOUDINARY_API_KEY &&
-    /^\d+$/.test(CLOUDINARY_API_KEY)   // API key must be numeric
+    /^\d+$/.test(CLOUDINARY_API_KEY)
 
   if (cloudinaryReady && file.path) {
     try {
@@ -32,25 +22,53 @@ async function resolveFileUrl(file) {
     }
   }
 
-  // Local fallback — file already saved to disk by multer
-  // Normalize path separators for URL
   const relativePath = file.path.replace(/\\/g, '/').replace(/^.*uploads\//, '')
   return `/uploads/${relativePath}`
 }
 
+// ── Helper: find the campaign creator user ────────────────────────────────────
+async function findCreator(campaign) {
+  const orConditions = []
+
+  // wallet address — skip pseudo-addresses like '0xfiat_...' and 'unknown'
+  if (
+    campaign.owner &&
+    campaign.owner !== 'unknown' &&
+    !campaign.owner.startsWith('0xfiat_')
+  ) {
+    orConditions.push({ walletAddress: campaign.owner.toLowerCase() })
+  }
+
+  if (campaign.ownerUsername) {
+    orConditions.push({ username: campaign.ownerUsername.toLowerCase() })
+  }
+
+  // ownerEmail stored on campaign — most reliable for fiat creators
+  if (campaign.ownerEmail) {
+    orConditions.push({ email: campaign.ownerEmail.toLowerCase() })
+  }
+
+  if (orConditions.length === 0) return null
+
+  const user = await User.findOne({ $or: orConditions })
+  return user || null
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/campaigns/:id/documents
-// Called by the frontend after campaign creation to attach verification docs
 // ─────────────────────────────────────────────────────────────────────────────
 export const uploadCampaignDocuments = async (req, res) => {
   try {
     const { id } = req.params
 
-    // id can be MongoDB _id OR contractAddress
     const campaign = await Campaign.findOne({
       $or: [
+        // MongoDB ObjectId
         ...(id.match(/^[a-f\d]{24}$/i) ? [{ _id: id }] : []),
-        { contractAddress: id.toLowerCase() },
+        // Real contract address (ETH)
+        ...(!id.startsWith('0xfiat_') ? [{ contractAddress: id.toLowerCase() }] : []),
+        // Fiat pseudo-address — match exactly as stored
+        { contractAddress: id },
       ],
     })
 
@@ -58,12 +76,11 @@ export const uploadCampaignDocuments = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Campaign not found.' })
     }
 
-    const files = req.files  // { fieldname: [File], ... }
+    const files = req.files
     if (!files || Object.keys(files).length === 0) {
       return res.status(400).json({ success: false, message: 'No files uploaded.' })
     }
 
-    // Human-readable names for each field
     const DOC_NAMES = {
       fees_receipt:        'Fees Receipt',
       institution_id:      'Institution ID',
@@ -87,10 +104,8 @@ export const uploadCampaignDocuments = async (req, res) => {
     for (const [fieldname, fileArray] of Object.entries(files)) {
       const file = fileArray[0]
       if (!file) continue
-
       try {
         const url = await resolveFileUrl(file)
-
         savedDocs.push({
           docId:    fieldname,
           name:     DOC_NAMES[fieldname] || fieldname,
@@ -100,7 +115,6 @@ export const uploadCampaignDocuments = async (req, res) => {
         })
       } catch (err) {
         console.error(`Failed to process ${fieldname}:`, err.message)
-        // Continue — save other docs even if one fails
       }
     }
 
@@ -108,7 +122,6 @@ export const uploadCampaignDocuments = async (req, res) => {
       return res.status(500).json({ success: false, message: 'Failed to process any documents.' })
     }
 
-    // Push docs into campaign and mark as pending verification
     campaign.documents.push(...savedDocs)
     if (campaign.verificationStatus === 'unverified') {
       campaign.verificationStatus = 'pending'
@@ -118,8 +131,8 @@ export const uploadCampaignDocuments = async (req, res) => {
     console.log(`Saved ${savedDocs.length} document(s) for campaign "${campaign.title}"`)
 
     return res.status(200).json({
-      success: true,
-      message: `${savedDocs.length} document(s) uploaded successfully.`,
+      success:   true,
+      message:   `${savedDocs.length} document(s) uploaded successfully.`,
       documents: savedDocs,
     })
   } catch (err) {
@@ -136,8 +149,6 @@ export const getPendingCampaigns = async (req, res) => {
     const campaigns = await Campaign.find({ verificationStatus: 'pending' })
       .sort({ createdAt: -1 })
       .lean()
-
-    // Attach creator info from User collection (matched by wallet address)
     const enriched = await enrichWithCreator(campaigns)
     return res.json({ success: true, data: enriched })
   } catch (err) {
@@ -154,11 +165,8 @@ export const getAllCampaignsForAdmin = async (req, res) => {
     const filter = {}
     if (status && status !== 'all') filter.verificationStatus = status
 
-    const campaigns = await Campaign.find(filter)
-      .sort({ createdAt: -1 })
-      .lean()
-
-    const enriched = await enrichWithCreator(campaigns)
+    const campaigns = await Campaign.find(filter).sort({ createdAt: -1 }).lean()
+    const enriched  = await enrichWithCreator(campaigns)
     return res.json({ success: true, data: enriched })
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message })
@@ -172,7 +180,6 @@ export const getCampaignForReview = async (req, res) => {
   try {
     const campaign = await Campaign.findById(req.params.id).lean()
     if (!campaign) return res.status(404).json({ success: false, message: 'Not found.' })
-
     const [enriched] = await enrichWithCreator([campaign])
     return res.json({ success: true, data: enriched })
   } catch (err) {
@@ -181,11 +188,12 @@ export const getCampaignForReview = async (req, res) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PATCH /api/campaign-verification/:id/verify
+// PATCH /api/campaign-verification/:id/verify   ← notifies user ✅
 // ─────────────────────────────────────────────────────────────────────────────
 export const verifyCampaign = async (req, res) => {
   try {
     const { note } = req.body
+
     const campaign = await Campaign.findByIdAndUpdate(
       req.params.id,
       {
@@ -197,6 +205,18 @@ export const verifyCampaign = async (req, res) => {
       { new: true }
     )
     if (!campaign) return res.status(404).json({ success: false, message: 'Not found.' })
+
+    try {
+      const user = await findCreator(campaign)
+      if (user) {
+        await notifyUserCampaignVerified({ campaign, user, status: 'verified' })
+      } else {
+        console.warn(`[verifyCampaign] No user found for campaign owner: ${campaign.owner}`)
+      }
+    } catch (notifyErr) {
+      console.warn('[verifyCampaign] Notification failed:', notifyErr.message)
+    }
+
     return res.json({ success: true, message: 'Campaign verified.', data: campaign })
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message })
@@ -204,7 +224,7 @@ export const verifyCampaign = async (req, res) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PATCH /api/campaign-verification/:id/reject
+// PATCH /api/campaign-verification/:id/reject   ← notifies user ✅
 // ─────────────────────────────────────────────────────────────────────────────
 export const rejectCampaign = async (req, res) => {
   try {
@@ -212,6 +232,7 @@ export const rejectCampaign = async (req, res) => {
     if (!reason?.trim()) {
       return res.status(400).json({ success: false, message: 'Rejection reason required.' })
     }
+
     const campaign = await Campaign.findByIdAndUpdate(
       req.params.id,
       {
@@ -223,6 +244,18 @@ export const rejectCampaign = async (req, res) => {
       { new: true }
     )
     if (!campaign) return res.status(404).json({ success: false, message: 'Not found.' })
+
+    try {
+      const user = await findCreator(campaign)
+      if (user) {
+        await notifyUserCampaignVerified({ campaign, user, status: 'rejected', reason })
+      } else {
+        console.warn(`[rejectCampaign] No user found for campaign owner: ${campaign.owner}`)
+      }
+    } catch (notifyErr) {
+      console.warn('[rejectCampaign] Notification failed:', notifyErr.message)
+    }
+
     return res.json({ success: true, message: 'Campaign rejected.', data: campaign })
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message })
@@ -235,7 +268,7 @@ export const rejectCampaign = async (req, res) => {
 export const updateDocumentStatus = async (req, res) => {
   try {
     const { id, docId } = req.params
-    const { action, reason } = req.body   // action: 'verified' | 'rejected'
+    const { action, reason } = req.body
 
     const campaign = await Campaign.findById(id)
     if (!campaign) return res.status(404).json({ success: false, message: 'Not found.' })
@@ -254,30 +287,67 @@ export const updateDocumentStatus = async (req, res) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helper: enrich campaigns with creator info from User table
+// Helper: enrich campaigns array with creator info
+// Works correctly for both ETH campaigns (wallet owner) and fiat campaigns
+// (pseudo-address owner, looked up by username or email instead)
 // ─────────────────────────────────────────────────────────────────────────────
 async function enrichWithCreator(campaigns) {
-  const owners = [...new Set(campaigns.map(c => c.owner?.toLowerCase()).filter(Boolean))]
+  // Collect all lookup values across all campaigns
+  const wallets   = []
+  const usernames = []
+  const emails    = []
 
-  // Try matching by walletAddress field, fallback to username field
-  const users = await User.find({
-    $or: [
-      { walletAddress: { $in: owners } },
-      { username: { $in: owners } },
-    ],
-  }).lean()
+  for (const c of campaigns) {
+    if (c.owner && c.owner !== 'unknown' && !c.owner.startsWith('0xfiat_')) {
+      wallets.push(c.owner.toLowerCase())
+    }
+    if (c.ownerUsername) usernames.push(c.ownerUsername.toLowerCase())
+    if (c.ownerEmail)    emails.push(c.ownerEmail.toLowerCase())
+  }
 
-  const userMap = {}
-  users.forEach(u => {
-    if (u.walletAddress) userMap[u.walletAddress.toLowerCase()] = u
-    if (u.username)      userMap[u.username.toLowerCase()] = u
+  const orConditions = []
+  if (wallets.length)   orConditions.push({ walletAddress: { $in: wallets } })
+  if (usernames.length) orConditions.push({ username:      { $in: usernames } })
+  if (emails.length)    orConditions.push({ email:         { $in: emails } })
+
+  let users = []
+  if (orConditions.length > 0) {
+    users = await User.find({ $or: orConditions }).lean()
+  }
+
+  // Build lookup maps for fast matching
+  const byWallet   = {}
+  const byUsername = {}
+  const byEmail    = {}
+
+  for (const u of users) {
+    if (u.walletAddress) byWallet[u.walletAddress.toLowerCase()]   = u
+    if (u.username)      byUsername[u.username.toLowerCase()]       = u
+    if (u.email)         byEmail[u.email.toLowerCase()]             = u
+  }
+
+  return campaigns.map(c => {
+    // Try each lookup strategy in order of reliability
+    const found =
+      byWallet[c.owner?.toLowerCase()] ||
+      byUsername[c.ownerUsername?.toLowerCase()] ||
+      byEmail[c.ownerEmail?.toLowerCase()] ||
+      null
+
+    return {
+      ...c,
+      creator: found
+        ? {
+            name:  found.name  || found.username || c.ownerName || c.owner || 'Unknown',
+            email: found.email || c.ownerEmail   || '',
+            phone: found.phone || c.ownerPhone   || '',
+          }
+        : {
+            // Pure fallback — use fields stored directly on the campaign
+            name:  c.ownerName  || c.owner || 'Unknown',
+            email: c.ownerEmail || '',
+            phone: c.ownerPhone || '',
+          },
+    }
   })
-
-  return campaigns.map(c => ({
-    ...c,
-    creator: userMap[c.owner?.toLowerCase()] || {
-      name:  c.ownerName     || c.owner || 'Unknown',
-      email: c.ownerUsername || '',
-    },
-  }))
 }

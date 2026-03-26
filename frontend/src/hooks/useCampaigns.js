@@ -4,6 +4,10 @@ import { useWallet } from '../context/WalletContext'
 import { CONTRACT_ADDRESS, FACTORY_ABI, CAMPAIGN_ABI } from '../utils/constants'
 import axios from 'axios'
 
+// ── Helper: is this a real on-chain address? ──────────────────────────────────
+const isOnChain = (c) =>
+  c.paymentType !== 'fiat' && ethers.isAddress(c.contractAddress)
+
 export const useCampaigns = () => {
   const { provider } = useWallet()
   const [campaigns, setCampaigns] = useState([])
@@ -14,17 +18,23 @@ export const useCampaigns = () => {
     setLoading(true)
     setError(null)
     try {
-      // Try backend first
       const { data } = await axios.get(
         `${import.meta.env.VITE_API_URL}/campaigns`
       )
 
       if (data.length > 0 && provider) {
-        // Sync live on-chain data
         const enriched = await Promise.all(
           data.map(async (c) => {
+            // ── Fiat campaign: no on-chain data, use DB values as-is ──────────
+            if (!isOnChain(c)) {
+              return {
+                ...c,
+                deadline: c.deadline * 1000,
+              }
+            }
+
+            // ── ETH campaign: sync live on-chain state ────────────────────────
             try {
-              if (!ethers.isAddress(c.contractAddress)) return c
               const contract = new ethers.Contract(
                 c.contractAddress, CAMPAIGN_ABI, provider
               )
@@ -47,7 +57,7 @@ export const useCampaigns = () => {
         )
         setCampaigns(enriched)
       } else if (provider && CONTRACT_ADDRESS) {
-        // Fallback: fetch from contract directly
+        // Fallback: fetch ETH campaigns directly from factory contract
         const factory  = new ethers.Contract(CONTRACT_ADDRESS, FACTORY_ABI, provider)
         const raw      = await factory.getCampaigns()
         const enriched = await Promise.all(
@@ -71,6 +81,7 @@ export const useCampaigns = () => {
                 deadline:        Number(c.deadline) * 1000,
                 claimed,
                 paused,
+                paymentType:     'eth',
               }
             } catch { return null }
           })
@@ -102,20 +113,38 @@ export const useCampaign = (contractAddress) => {
 
   const fetchCampaign = useCallback(async () => {
     if (!contractAddress) return
-    if (!ethers.isAddress(contractAddress)) {
-      setError(`Invalid contract address: "${contractAddress}"`)
-      return
-    }
+
     setLoading(true)
     setError(null)
     try {
-      // Try backend first
-      try {
-        const { data } = await axios.get(
-          `${import.meta.env.VITE_API_URL}/campaigns/${contractAddress}`
-        )
-        if (data && provider) {
-          const contract = new ethers.Contract(contractAddress, CAMPAIGN_ABI, provider)
+      // Always fetch from backend first — it has paymentType
+      const { data } = await axios.get(
+        `${import.meta.env.VITE_API_URL}/campaigns/${contractAddress}`
+      )
+
+      if (!data) {
+        setError('Campaign not found.')
+        return
+      }
+
+      // ── Fiat campaign: no contract call needed ────────────────────────────
+      if (!isOnChain(data)) {
+        setCampaign({
+          ...data,
+          deadline: data.deadline * 1000,
+        })
+        return
+      }
+
+      // ── ETH campaign: validate address then sync on-chain ─────────────────
+      if (!ethers.isAddress(data.contractAddress)) {
+        setError(`Invalid contract address: "${data.contractAddress}"`)
+        return
+      }
+
+      if (provider) {
+        try {
+          const contract = new ethers.Contract(data.contractAddress, CAMPAIGN_ABI, provider)
           const [amountRaised, claimed, paused] = await Promise.all([
             contract.amountRaised(),
             contract.claimed(),
@@ -129,27 +158,14 @@ export const useCampaign = (contractAddress) => {
             deadline: data.deadline * 1000,
           })
           return
+        } catch (chainErr) {
+          console.warn('On-chain sync failed, using DB data:', chainErr.message)
         }
-      } catch { }
+      }
 
-      // Fallback: fetch from contract
-      if (!provider) return
-      const contract = new ethers.Contract(contractAddress, CAMPAIGN_ABI, provider)
-      const [owner, title, description, imageHash, goal, deadline, amountRaised, claimed, paused] =
-        await Promise.all([
-          contract.owner(), contract.title(), contract.description(),
-          contract.imageHash(), contract.goal(), contract.deadline(),
-          contract.amountRaised(), contract.claimed(), contract.paused(),
-        ])
-      setCampaign({
-        contractAddress,
-        owner, title, description, imageHash,
-        goal:         ethers.formatEther(goal),
-        deadline:     Number(deadline) * 1000,
-        amountRaised: ethers.formatEther(amountRaised),
-        claimed,
-        paused,
-      })
+      // Provider unavailable — use DB data only
+      setCampaign({ ...data, deadline: data.deadline * 1000 })
+
     } catch (err) {
       console.error('fetchCampaign error:', err)
       setError(err.message)

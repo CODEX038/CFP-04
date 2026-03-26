@@ -1,7 +1,10 @@
+// ── dotenv MUST be the very first import ─────────────────────────────────────
+import dotenv from 'dotenv'
+dotenv.config()
+
 import express from 'express'
 import mongoose from 'mongoose'
 import cors from 'cors'
-import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -11,8 +14,6 @@ import verificationRoutes from './routes/verificationRoutes.js'
 import campaignVerificationRoutes from './routes/campaignVerificationRoutes.js'
 import donationRoutes from './routes/donationRoutes.js'
 import { startListener } from './listeners/contractListener.js'
-
-dotenv.config()
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -30,7 +31,7 @@ app.use('/api/donations/upi/webhook', express.raw({ type: 'application/json' }))
 
 app.use(express.json())
 
-// Serve uploaded files — must be before routes
+// ── Serve uploaded files (local fallback) ─────────────────────────────────────
 app.use(
   '/uploads',
   (req, res, next) => {
@@ -41,6 +42,7 @@ app.use(
   express.static(path.join(__dirname, 'uploads'))
 )
 
+// ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes)
 app.use('/api/campaigns', campaignRoutes)
 app.use('/api/verification', verificationRoutes)
@@ -49,6 +51,7 @@ app.use('/api/donations', donationRoutes)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 
+// ── Database + Server start ───────────────────────────────────────────────────
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {

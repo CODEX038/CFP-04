@@ -8,8 +8,118 @@ import { useIPFS } from '../hooks/useIPFS'
 import { CONTRACT_ADDRESS, FACTORY_ABI } from '../utils/constants'
 import { getDocumentsForCategory } from '../utils/campaignDocuments'
 
-const STEPS = ['Details', 'Goal & deadline', 'Image', 'Documents', 'Review']
+const STEPS = ['Details', 'Goal & Deadline', 'Image', 'Documents', 'Review']
 const API   = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+
+// ── Get auth token — single source of truth ───────────────────────────────────
+function getAuthToken() {
+  return localStorage.getItem('admin_token') || null
+}
+
+// ── Payment type selector ─────────────────────────────────────────────────────
+const PaymentTypeSelector = ({ onSelect }) => (
+  <div className="max-w-2xl mx-auto">
+    <div className="mb-8 text-center">
+      <h1 className="text-2xl font-bold text-gray-900 mb-2">Create a campaign</h1>
+      <p className="text-gray-500 text-sm">First, choose how donors will contribute to your campaign.</p>
+    </div>
+
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* ETH option */}
+      <button
+        onClick={() => onSelect('eth')}
+        className="group relative text-left border-2 border-gray-200 hover:border-purple-400 rounded-2xl p-6 transition-all hover:shadow-md"
+      >
+        <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-100 transition-colors">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L4 12.5l8 4.5 8-4.5L12 2z" fill="#7c3aed" opacity="0.9"/>
+            <path d="M4 12.5L12 17l8-4.5" stroke="#7c3aed" strokeWidth="1.5" fill="none"/>
+            <path d="M12 17v5M4 12.5l8 2 8-2" stroke="#7c3aed" strokeWidth="1.5" fill="none" opacity="0.5"/>
+          </svg>
+        </div>
+        <h3 className="font-semibold text-gray-900 mb-1">Crypto (ETH)</h3>
+        <p className="text-sm text-gray-500 leading-relaxed">
+          Accept donations in Ethereum via MetaMask. Goal set in ETH. Funds go directly to your wallet on-chain.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">MetaMask</span>
+          <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">Sepolia testnet</span>
+          <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">Goal in ETH</span>
+        </div>
+        <div className="absolute top-4 right-4 w-6 h-6 rounded-full border-2 border-gray-200 group-hover:border-purple-400 group-hover:bg-purple-400 transition-all flex items-center justify-center">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <path d="M20 6L9 17l-5-5"/>
+          </svg>
+        </div>
+      </button>
+
+      {/* UPI / Card option */}
+      <button
+        onClick={() => onSelect('fiat')}
+        className="group relative text-left border-2 border-gray-200 hover:border-blue-400 rounded-2xl p-6 transition-all hover:shadow-md"
+      >
+        <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.8">
+            <rect x="2" y="5" width="20" height="14" rx="3"/>
+            <path d="M2 10h20"/>
+            <path d="M6 15h4M14 15h4" strokeLinecap="round"/>
+          </svg>
+        </div>
+        <h3 className="font-semibold text-gray-900 mb-1">UPI / Card (₹)</h3>
+        <p className="text-sm text-gray-500 leading-relaxed">
+          Accept donations in Indian Rupees via UPI or credit/debit card. Goal set in ₹. Powered by Stripe.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">UPI</span>
+          <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">Credit / Debit card</span>
+          <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">Goal in ₹</span>
+        </div>
+        <div className="absolute top-4 right-4 w-6 h-6 rounded-full border-2 border-gray-200 group-hover:border-blue-400 group-hover:bg-blue-400 transition-all flex items-center justify-center">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <path d="M20 6L9 17l-5-5"/>
+          </svg>
+        </div>
+      </button>
+    </div>
+
+    <p className="text-center text-xs text-gray-400 mt-6">
+      This cannot be changed after the campaign is created.
+    </p>
+  </div>
+)
+
+// ── Payment type badge ────────────────────────────────────────────────────────
+const PaymentTypeBadge = ({ paymentType, onReset }) => (
+  <div className="flex items-center justify-between mb-6">
+    <h1 className="text-2xl font-bold text-gray-900">Create a campaign</h1>
+    <button
+      onClick={onReset}
+      className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
+        paymentType === 'eth'
+          ? 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
+          : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+      }`}
+    >
+      {paymentType === 'eth' ? (
+        <>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2L4 12.5l8 4.5 8-4.5L12 2z"/>
+          </svg>
+          ETH campaign
+        </>
+      ) : (
+        <>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="2" y="5" width="20" height="14" rx="3"/>
+            <path d="M2 10h20"/>
+          </svg>
+          UPI / Card campaign
+        </>
+      )}
+      <span className="opacity-50 ml-1">✕ change</span>
+    </button>
+  </div>
+)
 
 const CreateCampaign = () => {
   const navigate = useNavigate()
@@ -17,6 +127,7 @@ const CreateCampaign = () => {
   const { user } = useAuth()
   const { uploadImage } = useIPFS()
 
+  const [paymentType, setPaymentType]   = useState(null)
   const [step, setStep]                 = useState(0)
   const [txStatus, setTxStatus]         = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
@@ -30,10 +141,32 @@ const CreateCampaign = () => {
   const [errors, setErrors] = useState({})
 
   const categories = ['Technology', 'Environment', 'Education', 'Health', 'Community', 'Arts']
+  const isETH  = paymentType === 'eth'
+  const isFiat = paymentType === 'fiat'
+
+  // ── Safely read user fields regardless of JWT payload shape ──────────────
+  const userName     = user?.name     || user?.fullName || ''
+  const userUsername = user?.username || user?.userName || ''
+  const userEmail    = user?.email    || user?.emailAddress || ''
+  const userPhone    = user?.phone    || user?.phoneNumber  || ''
 
   const set = (key, val) => {
     setForm((f) => ({ ...f, [key]: val }))
     setErrors((e) => ({ ...e, [key]: '' }))
+  }
+
+  const handleTypeSelect = (type) => {
+    setPaymentType(type)
+    setStep(0)
+    setForm(f => ({ ...f, goal: '' }))
+    setErrors({})
+  }
+
+  const handleTypeReset = () => {
+    setPaymentType(null)
+    setStep(0)
+    setForm(f => ({ ...f, goal: '' }))
+    setErrors({})
   }
 
   const validateStep = () => {
@@ -45,7 +178,12 @@ const CreateCampaign = () => {
       if (form.description.length < 50) e.description = 'Description must be at least 50 characters.'
     }
     if (step === 1) {
-      if (!form.goal || parseFloat(form.goal) <= 0) e.goal = 'Enter a valid goal in ETH.'
+      if (!form.goal || parseFloat(form.goal) <= 0) {
+        e.goal = isETH ? 'Enter a valid goal in ETH.' : 'Enter a valid goal amount in ₹.'
+      }
+      if (isFiat && parseFloat(form.goal) < 100) {
+        e.goal = 'Minimum goal is ₹100.'
+      }
       if (!form.deadline) e.deadline = 'Select a deadline.'
       else if (new Date(form.deadline) <= new Date()) e.deadline = 'Deadline must be in the future.'
     }
@@ -94,17 +232,21 @@ const CreateCampaign = () => {
     setUploadedDocs(d); setDocPreviews(p)
   }
 
-  // ── Upload documents to Cloudinary via backend ────────────────────────────
+  // ── Upload documents — uses admin_token directly ──────────────────────────
   const uploadDocumentsToBackend = async (campaignId) => {
     if (!Object.keys(uploadedDocs).length) return
+
+    const token = getAuthToken()
+    if (!token) {
+      console.warn('✗ No auth token — documents not uploaded. Please log in.')
+      return
+    }
+
     try {
       const formData = new FormData()
       Object.entries(uploadedDocs).forEach(([docId, file]) => {
         formData.append(docId, file)
       })
-
-      // ✅ Fixed: use 'admin_token' not 'token'
-      const token = localStorage.getItem('admin_token')
 
       const { data } = await axios.post(
         `${API}/campaigns/${campaignId}/documents`,
@@ -116,13 +258,22 @@ const CreateCampaign = () => {
           },
         }
       )
-      console.log('✓ Documents uploaded to Cloudinary:', data.message)
+      console.log('✓ Documents uploaded:', data.message)
     } catch (err) {
       console.warn('✗ Document upload failed:', err.response?.data?.message || err.message)
     }
   }
 
-  const handleSubmit = async () => {
+  // ── Build owner payload from user context ─────────────────────────────────
+  const ownerPayload = () => ({
+    ownerName:     userName,
+    ownerUsername: userUsername,
+    ownerEmail:    userEmail,
+    ownerPhone:    userPhone,
+  })
+
+  // ── ETH campaign: deploys on-chain ────────────────────────────────────────
+  const handleSubmitETH = async () => {
     if (!account) { connectWallet(); return }
     if (wrongNetwork) { switchNetwork(); return }
 
@@ -149,8 +300,7 @@ const CreateCampaign = () => {
             contractAddress: event.args.campaignAddress,
             factoryIndex:    Number(event.args.index),
             owner:           account,
-            ownerName:       user?.name     || '',
-            ownerUsername:   user?.username || '',
+            ...ownerPayload(),
             title:           form.title,
             description:     form.description,
             imageHash,
@@ -158,15 +308,13 @@ const CreateCampaign = () => {
             goal:            form.goal,
             deadline:        deadlineTs,
             txHash:          receipt.hash,
+            paymentType:     'eth',
           })
 
-          // Extract MongoDB _id from response
           const campaignId = data?._id || data?.data?._id
           if (campaignId) {
             setCreatedCampaignId(campaignId)
             await uploadDocumentsToBackend(campaignId)
-          } else {
-            console.warn('No campaign _id returned from backend:', data)
           }
         } catch (backendErr) {
           console.warn('Backend save failed:', backendErr.response?.data?.message || backendErr.message)
@@ -182,6 +330,53 @@ const CreateCampaign = () => {
     }
   }
 
+  // ── Fiat campaign: no on-chain tx ─────────────────────────────────────────
+  const handleSubmitFiat = async () => {
+    setTxStatus('uploading')
+    try {
+      let imageHash = ''
+      if (imageFile) imageHash = await uploadImage(imageFile)
+
+      setTxStatus('pending')
+
+      const deadlineTs    = Math.floor(new Date(form.deadline).getTime() / 1000)
+      const pseudoAddress = `0xfiat_${(account || 'nowal').toLowerCase().slice(2, 10)}_${Date.now()}`
+
+      const { data } = await axios.post(`${API}/campaigns`, {
+        contractAddress: pseudoAddress,
+        factoryIndex:    null,
+        owner:           account || 'unknown',
+        ...ownerPayload(),
+        title:           form.title,
+        description:     form.description,
+        imageHash,
+        category:        form.category,
+        goal:            parseFloat(form.goal),
+        deadline:        deadlineTs,
+        txHash:          '',
+        paymentType:     'fiat',
+      })
+
+      const campaignId = data?._id || data?.data?._id
+      if (campaignId) {
+        setCreatedCampaignId(campaignId)
+        await uploadDocumentsToBackend(campaignId)
+      }
+
+      setTxStatus('success')
+      setTimeout(() => navigate('/app'), 2500)
+    } catch (err) {
+      console.error(err)
+      setTxStatus('error')
+      setTimeout(() => setTxStatus(null), 4000)
+    }
+  }
+
+  const handleSubmit = () => {
+    if (isETH)  return handleSubmitETH()
+    if (isFiat) return handleSubmitFiat()
+  }
+
   const deadlineMin = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
   const categoryColors = {
@@ -193,16 +388,16 @@ const CreateCampaign = () => {
     Arts:        { bg: 'bg-pink-50',   border: 'border-pink-200',   text: 'text-pink-700'   },
   }
 
-  if (!account) return (
+  if (isETH && !account) return (
     <div className="flex flex-col items-center justify-center py-32 gap-4">
-      <p className="text-gray-500">Connect your wallet to create a campaign.</p>
+      <p className="text-gray-500">Connect your wallet to create an ETH campaign.</p>
       <button onClick={connectWallet} className="bg-purple-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-purple-700">
         Connect wallet
       </button>
     </div>
   )
 
-  if (wrongNetwork) return (
+  if (isETH && wrongNetwork) return (
     <div className="flex flex-col items-center justify-center py-32 gap-4">
       <p className="text-gray-500">Please switch to Sepolia Test Network to continue.</p>
       <button onClick={switchNetwork} className="bg-red-500 text-white px-6 py-3 rounded-xl font-medium hover:bg-red-600">
@@ -210,6 +405,21 @@ const CreateCampaign = () => {
       </button>
     </div>
   )
+
+  // ── Show type selector ────────────────────────────────────────────────────
+  if (!paymentType) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 text-sm mb-6">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Back
+        </button>
+        <PaymentTypeSelector onSelect={handleTypeSelect} />
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -220,7 +430,7 @@ const CreateCampaign = () => {
         Back
       </button>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Create a campaign</h1>
+      <PaymentTypeBadge paymentType={paymentType} onReset={handleTypeReset} />
 
       {/* Stepper */}
       <div className="flex items-center gap-0 mb-8">
@@ -291,12 +501,27 @@ const CreateCampaign = () => {
       {step === 1 && (
         <div className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Funding goal (ETH)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Funding goal {isETH ? '(ETH)' : '(₹ INR)'}
+            </label>
             <div className="relative">
-              <input type="number" min="0.01" step="0.01" value={form.goal}
-                onChange={(e) => set('goal', e.target.value)} placeholder="e.g. 10"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 pr-16 text-sm outline-none focus:border-purple-400" />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">ETH</span>
+              {isFiat && (
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">₹</span>
+              )}
+              <input
+                type="number"
+                min={isETH ? '0.001' : '100'}
+                step={isETH ? '0.001' : '1'}
+                value={form.goal}
+                onChange={(e) => set('goal', e.target.value)}
+                placeholder={isETH ? 'e.g. 0.5' : 'e.g. 50000'}
+                className={`w-full border border-gray-200 rounded-xl py-3 text-sm outline-none focus:border-purple-400 ${
+                  isFiat ? 'pl-8 pr-16' : 'px-4 pr-16'
+                }`}
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
+                {isETH ? 'ETH' : 'INR'}
+              </span>
             </div>
             {errors.goal && <p className="text-red-500 text-xs mt-1">{errors.goal}</p>}
           </div>
@@ -309,10 +534,18 @@ const CreateCampaign = () => {
             {errors.deadline && <p className="text-red-500 text-xs mt-1">{errors.deadline}</p>}
           </div>
 
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
-            If your goal is met before the deadline, you can withdraw all funds.
-            If not, funders can claim a full refund after the deadline.
-          </div>
+          {isETH && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
+              If your goal is met before the deadline, you can withdraw all funds.
+              If not, funders can claim a full refund after the deadline.
+            </div>
+          )}
+          {isFiat && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
+              Donors will pay via UPI or card in Indian Rupees.
+              Funds are collected via Stripe and can be withdrawn once the goal is met.
+            </div>
+          )}
         </div>
       )}
 
@@ -468,16 +701,25 @@ const CreateCampaign = () => {
           ) : (
             <>
               <div className="bg-gray-50 rounded-2xl p-5 space-y-3 text-sm">
-                {user?.name && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Payment type</span>
+                  <span className={`font-medium px-2 py-0.5 rounded-full text-xs ${
+                    isETH ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {isETH ? '◆ ETH / Crypto' : '💳 UPI / Card (₹)'}
+                  </span>
+                </div>
+
+                {userName && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Creator</span>
-                    <span className="font-medium text-gray-900">{user.name}</span>
+                    <span className="font-medium text-gray-900">{userName}</span>
                   </div>
                 )}
-                {user?.username && (
+                {userUsername && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Username</span>
-                    <span className="text-purple-600">@{user.username}</span>
+                    <span className="text-purple-600">@{userUsername}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
@@ -490,7 +732,9 @@ const CreateCampaign = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Goal</span>
-                  <span className="font-medium text-gray-900">{form.goal} ETH</span>
+                  <span className="font-medium text-gray-900">
+                    {isETH ? `${form.goal} ETH` : `₹${Number(form.goal).toLocaleString('en-IN')}`}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Deadline</span>
@@ -506,10 +750,12 @@ const CreateCampaign = () => {
                     {Object.keys(uploadedDocs).length} uploaded
                   </span>
                 </div>
-                <div className="border-t border-gray-200 pt-3 flex justify-between">
-                  <span className="text-gray-500">Wallet</span>
-                  <span className="font-mono text-xs text-gray-700">{account}</span>
-                </div>
+                {account && (
+                  <div className="border-t border-gray-200 pt-3 flex justify-between">
+                    <span className="text-gray-500">Wallet</span>
+                    <span className="font-mono text-xs text-gray-700">{account}</span>
+                  </div>
+                )}
               </div>
 
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-600">
@@ -519,7 +765,7 @@ const CreateCampaign = () => {
 
               {txStatus === 'error' && (
                 <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">
-                  Transaction failed. Please try again.
+                  {isETH ? 'Transaction failed. Please try again.' : 'Failed to create campaign. Please try again.'}
                 </div>
               )}
 
@@ -529,8 +775,8 @@ const CreateCampaign = () => {
                 className="w-full bg-purple-600 text-white py-3 rounded-xl font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
               >
                 {txStatus === 'uploading' ? 'Uploading to IPFS...' :
-                 txStatus === 'pending'   ? 'Confirming transaction...' :
-                 'Deploy campaign'}
+                 txStatus === 'pending'   ? (isETH ? 'Confirming transaction...' : 'Creating campaign...') :
+                 isETH                   ? 'Deploy campaign' : 'Create campaign'}
               </button>
             </>
           )}

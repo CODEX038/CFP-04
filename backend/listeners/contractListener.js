@@ -2,10 +2,8 @@
  * contractListener.js
  * Listens to Sepolia blockchain events and syncs campaign data in MongoDB.
  *
- * IMPORTANT: Campaigns are created in MongoDB by the frontend (POST /api/campaigns)
- * immediately after the on-chain transaction. This listener only UPDATES existing
- * records — it never creates new ones (which would fail due to required fields
- * like creator, category, description that are not available on-chain).
+ * Only attaches listeners to ETH campaigns (paymentType === 'eth').
+ * Fiat campaigns use pseudo-addresses (0xfiat_...) which are not real contracts.
  */
 
 import { ethers }  from 'ethers'
@@ -24,6 +22,12 @@ const CAMPAIGN_ABI = [
   "event Refunded(address indexed funder, uint256 amount)",
 ]
 
+// Returns true if the contractAddress is a real on-chain address (not a fiat pseudo-address)
+const isRealAddress = (addr) =>
+  addr &&
+  !addr.startsWith('0xfiat_') &&
+  /^0x[0-9a-fA-F]{40}$/.test(addr)
+
 export const startListener = async () => {
   try {
     if (!process.env.RPC_URL || !process.env.CONTRACT_ADDRESS) {
@@ -40,8 +44,7 @@ export const startListener = async () => {
 
     console.log('Contract listener started on Sepolia...')
 
-    // ── CampaignCreated — update contractCampaignId and txHash if campaign ──
-    // already saved to DB by the frontend. Skip silently if not found.
+    // ── CampaignCreated — update txHash when on-chain event fires ────────────
     factory.on('CampaignCreated', async (index, campaignAddress, owner, title, goal, deadline, event) => {
       console.log(`CampaignCreated event: "${title}" at ${campaignAddress}`)
       try {
@@ -56,14 +59,9 @@ export const startListener = async () => {
           { new: true }
         )
         if (!updated) {
-          // Frontend may not have saved yet — try matching by title as fallback
           await Campaign.findOneAndUpdate(
             { title, isActive: true },
-            {
-              $set: {
-                txHash:   event?.log?.transactionHash || '',
-              }
-            }
+            { $set: { txHash: event?.log?.transactionHash || '' } }
           )
         }
       } catch (err) {
@@ -71,18 +69,20 @@ export const startListener = async () => {
       }
     })
 
-    // ── Attach Funded/Withdrawn/Refunded listeners to all known campaigns ─────
+    // ── Attach Funded/Withdrawn/Refunded listeners to ETH campaigns only ─────
     const attachCampaignListeners = async () => {
-      const campaigns = await Campaign.find({ isActive: true })
-      console.log(`Attaching listeners to ${campaigns.length} campaign(s)...`)
+      // Only fetch ETH campaigns — fiat campaigns have no real contract to listen to
+      const campaigns = await Campaign.find({
+        isActive:    true,
+        paymentType: { $ne: 'fiat' },
+      })
 
-      campaigns.forEach((c) => {
-        // Need a contract address on-chain to listen — skip if not set
-        // (contractCampaignId is the factory index; we need the actual contract address)
-        // The frontend saves contractAddress in a separate field if you have it
-        // For now we listen using the stored txHash lookup as fallback
-        if (!c.contractAddress) return
+      // Extra safety: filter out any pseudo-addresses that slipped through
+      const ethCampaigns = campaigns.filter(c => isRealAddress(c.contractAddress))
 
+      console.log(`Attaching listeners to ${ethCampaigns.length} campaign(s)...`)
+
+      ethCampaigns.forEach((c) => {
         const contract = new ethers.Contract(c.contractAddress, CAMPAIGN_ABI, provider)
 
         // Funded — increment raised amount
@@ -90,9 +90,7 @@ export const startListener = async () => {
           const eth = parseFloat(ethers.formatEther(amount))
           console.log(`Funded: "${c.title}" +${eth} ETH from ${funder}`)
           try {
-            await Campaign.findByIdAndUpdate(c._id, {
-              $inc: { raised: eth },
-            })
+            await Campaign.findByIdAndUpdate(c._id, { $inc: { raised: eth } })
           } catch (err) {
             console.error('Funded listener error:', err.message)
           }
@@ -102,9 +100,7 @@ export const startListener = async () => {
         contract.on('Withdrawn', async (owner, amount) => {
           console.log(`Withdrawn: "${c.title}" ${ethers.formatEther(amount)} ETH`)
           try {
-            await Campaign.findByIdAndUpdate(c._id, {
-              $set: { claimed: true }
-            })
+            await Campaign.findByIdAndUpdate(c._id, { $set: { claimed: true } })
           } catch (err) {
             console.error('Withdrawn listener error:', err.message)
           }
@@ -115,9 +111,7 @@ export const startListener = async () => {
           const eth = parseFloat(ethers.formatEther(amount))
           console.log(`Refunded: "${c.title}" -${eth} ETH to ${funder}`)
           try {
-            await Campaign.findByIdAndUpdate(c._id, {
-              $inc: { raised: -eth },
-            })
+            await Campaign.findByIdAndUpdate(c._id, { $inc: { raised: -eth } })
           } catch (err) {
             console.error('Refunded listener error:', err.message)
           }
@@ -127,7 +121,7 @@ export const startListener = async () => {
 
     await attachCampaignListeners()
 
-    // Re-attach listeners every 5 minutes to pick up newly created campaigns
+    // Re-attach every 5 minutes to pick up newly created ETH campaigns
     setInterval(attachCampaignListeners, 5 * 60 * 1000)
 
   } catch (err) {

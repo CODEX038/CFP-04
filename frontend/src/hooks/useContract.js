@@ -17,6 +17,11 @@ export const useCampaignContract = (address, withSigner = false) => {
   return useMemo(() => {
     const runner = withSigner ? signer : provider
     if (!runner || !address) return null
+
+    // ── Never create a contract for fiat pseudo-addresses ─────────────────────
+    // Fiat campaign addresses start with '0xfiat_' — they are not real contracts
+    if (!ethers.isAddress(address)) return null
+
     return new ethers.Contract(address, CAMPAIGN_ABI, runner)
   }, [signer, provider, address, withSigner])
 }

@@ -24,6 +24,8 @@ const CampaignSchema = new mongoose.Schema(
     owner:         { type: String, required: true, lowercase: true }, // wallet address
     ownerName:     { type: String, default: '' },
     ownerUsername: { type: String, default: '' },
+    ownerEmail:    { type: String, default: '' },  // stored for email lookup
+    ownerPhone:    { type: String, default: '' },  // stored for SMS lookup
 
     // ── Campaign details ──────────────────────────────────────────────────────
     title:       { type: String, required: true, trim: true },
@@ -36,12 +38,23 @@ const CampaignSchema = new mongoose.Schema(
     imageHash: { type: String, default: '' },  // IPFS hash
     image:     { type: String, default: '' },  // fallback URL
 
+    // ── Payment type ──────────────────────────────────────────────────────────
+    // 'eth'  → goal stored in ETH, donations via MetaMask/on-chain
+    // 'fiat' → goal stored in INR (₹), donations via UPI/Card (Stripe)
+    paymentType: {
+      type:    String,
+      enum:    ['eth', 'fiat'],
+      default: 'eth',
+    },
+
     // ── Funding ───────────────────────────────────────────────────────────────
-    goal:        { type: Number, required: true },
-    amountRaised:{ type: Number, default: 0 },
-    raised:      { type: Number, default: 0 },  // alias kept for compatibility
-    funders:     { type: Number, default: 0 },
-    deadline:    { type: Number, required: true }, // unix timestamp
+    // For ETH campaigns:  goal & amountRaised are in ETH (float)
+    // For fiat campaigns: goal & amountRaised are in INR (integer)
+    goal:         { type: Number, required: true },
+    amountRaised: { type: Number, default: 0 },
+    raised:       { type: Number, default: 0 },  // alias kept for compatibility
+    funders:      { type: Number, default: 0 },
+    deadline:     { type: Number, required: true }, // unix timestamp
 
     // ── Status ────────────────────────────────────────────────────────────────
     claimed:  { type: Boolean, default: false },
@@ -63,5 +76,6 @@ const CampaignSchema = new mongoose.Schema(
 // Index for fast lookups
 CampaignSchema.index({ owner: 1 })
 CampaignSchema.index({ category: 1 })
+CampaignSchema.index({ paymentType: 1 })
 
 export default mongoose.models.Campaign || mongoose.model('Campaign', CampaignSchema)

@@ -14,12 +14,28 @@ const CampaignCard = ({ campaign, onClick }) => {
     imageHash,
     category,
     paused,
+    paymentType, // Add this field
   } = campaign
 
   const pct   = Math.min((parseFloat(amountRaised) / parseFloat(goal)) * 100, 100)
   const short = (addr) => `${addr.slice(0, 6)}...${addr.slice(-4)}`
   const isExpired = Date.now() > deadline
   const isGoalMet = parseFloat(amountRaised) >= parseFloat(goal)
+  
+  // Determine currency display
+  const isFiat = paymentType === 'fiat'
+  const currency = isFiat ? 'INR' : 'ETH'
+  const currencySymbol = isFiat ? '₹' : ''
+  
+  // Format amount with appropriate decimals
+  const formatAmount = (amount) => {
+    const num = parseFloat(amount)
+    if (isFiat) {
+      // Indian number formatting with commas (e.g., ₹1,00,000)
+      return num.toLocaleString('en-IN', { maximumFractionDigits: 0 })
+    }
+    return num.toFixed(3)
+  }
 
   return (
     <div
@@ -84,9 +100,9 @@ const CampaignCard = ({ campaign, onClick }) => {
         <div className="flex justify-between items-center mt-2 mb-4 text-sm">
           <div>
             <span className="font-semibold text-gray-900">
-              {parseFloat(amountRaised).toFixed(3)} ETH
+              {currencySymbol}{formatAmount(amountRaised)} {currency}
             </span>
-            <span className="text-gray-400"> of {goal} ETH</span>
+            <span className="text-gray-400"> of {currencySymbol}{formatAmount(goal)} {currency}</span>
           </div>
           <span className={`font-medium ${pct >= 100 ? 'text-green-600' : 'text-purple-600'}`}>
             {Math.round(pct)}%

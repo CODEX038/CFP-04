@@ -1,61 +1,142 @@
 import nodemailer from 'nodemailer'
 
-function createTransporter() {
-  return nodemailer.createTransport({
-    host:   process.env.SMTP_HOST   || 'smtp.gmail.com',
-    port:   parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
+let transporter
+function getTransporter() {
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      host:   process.env.SMTP_HOST   || 'smtp.gmail.com',
+      port:   Number(process.env.SMTP_PORT) || 587,
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    })
+  }
+  return transporter
+}
+
+function htmlWrap(title, bodyHtml) {
+  return `
+    <!DOCTYPE html><html><head><meta charset="utf-8"/>
+    <style>
+      body { font-family: Arial, sans-serif; background:#f4f4f4; margin:0; padding:0; }
+      .container { max-width:600px; margin:40px auto; background:#fff;
+                   border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+      .header { background:#4f46e5; padding:24px 32px; }
+      .header h1 { color:#fff; margin:0; font-size:22px; }
+      .body { padding:32px; color:#333; line-height:1.6; }
+      .badge-pending  { display:inline-block; background:#fef3c7; color:#92400e;
+                        padding:4px 12px; border-radius:999px; font-size:13px; font-weight:600; }
+      .badge-approved { display:inline-block; background:#d1fae5; color:#065f46;
+                        padding:4px 12px; border-radius:999px; font-size:13px; font-weight:600; }
+      .badge-rejected { display:inline-block; background:#fee2e2; color:#991b1b;
+                        padding:4px 12px; border-radius:999px; font-size:13px; font-weight:600; }
+      .btn { display:inline-block; margin-top:20px; padding:12px 28px;
+             background:#4f46e5; color:#fff; text-decoration:none;
+             border-radius:6px; font-weight:600; }
+      .footer { background:#f9fafb; padding:16px 32px; font-size:12px; color:#888; }
+      table { width:100%; border-collapse:collapse; margin-top:16px; }
+      td,th { padding:10px 12px; border:1px solid #e5e7eb; font-size:14px; text-align:left; }
+      th { background:#f3f4f6; }
+    </style></head><body>
+      <div class="container">
+        <div class="header"><h1>${title}</h1></div>
+        <div class="body">${bodyHtml}</div>
+        <div class="footer">CrowdFund Platform &nbsp;|&nbsp; This is an automated message, please do not reply.</div>
+      </div>
+    </body></html>`
+}
+
+async function send({ to, subject, html }) {
+  await getTransporter().sendMail({
+    from: `"CrowdFund Platform" <${process.env.SMTP_USER}>`,
+    to, subject, html,
   })
 }
 
-export async function sendEmailOtp(toEmail, otp, userName = 'there') {
-  const transporter = createTransporter()
+// ── OTP emails (used by verificationController) ───────────────────────────────
+export async function sendEmailOtp(email, otp, name = 'there') {
+  const html = htmlWrap('Email Verification OTP', `
+    <p>Hello ${name},</p>
+    <p>Your one-time password is:</p>
+    <h2 style="letter-spacing:8px;color:#4f46e5;font-size:36px;">${otp}</h2>
+    <p>This OTP expires in <strong>5 minutes</strong>. Do not share it with anyone.</p>
+  `)
+  await send({ to: email, subject: 'Your CrowdFund Email Verification OTP', html })
+}
 
-  await transporter.sendMail({
-    from:    `"${process.env.APP_NAME || 'CrowdFund'}" <${process.env.SMTP_USER}>`,
-    to:      toEmail,
-    subject: `Your verification code is ${otp}`,
-    text:    `Hi ${userName},\n\nYour OTP is: ${otp}\nExpires in 5 minutes.\n\nDo not share this code.\n\n— ${process.env.APP_NAME || 'CrowdFund'} Team`,
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <head><meta charset="UTF-8" />
-          <style>
-            body{font-family:'Segoe UI',sans-serif;background:#f4f4f4;margin:0;padding:0}
-            .container{max-width:480px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08)}
-            .header{background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px 40px;text-align:center}
-            .header h1{color:#e2c27d;margin:0;font-size:22px;letter-spacing:2px;text-transform:uppercase}
-            .body{padding:40px;text-align:center}
-            .otp-box{background:#f8f8f8;border:2px dashed #e2c27d;border-radius:8px;padding:20px 32px;display:inline-block;margin:24px 0}
-            .otp{font-size:42px;font-weight:700;letter-spacing:12px;color:#1a1a2e;font-family:monospace}
-            .expiry{color:#888;font-size:13px;margin-top:8px}
-            p{color:#444;line-height:1.6}
-            .footer{background:#fafafa;padding:20px 40px;text-align:center;border-top:1px solid #eee}
-            .footer p{color:#aaa;font-size:12px;margin:0}
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header"><h1>${process.env.APP_NAME || 'CrowdFund'}</h1></div>
-            <div class="body">
-              <p>Hi <strong>${userName}</strong>,</p>
-              <p>Use the code below to verify your email. It expires in <strong>5 minutes</strong>.</p>
-              <div class="otp-box">
-                <div class="otp">${otp}</div>
-                <div class="expiry">Expires in 5 minutes</div>
-              </div>
-              <p style="color:#999;font-size:13px">Never share this code with anyone.</p>
-            </div>
-            <div class="footer">
-              <p>© ${new Date().getFullYear()} ${process.env.APP_NAME || 'CrowdFund'}. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `,
+// ── Admin: new campaign pending ───────────────────────────────────────────────
+export async function sendAdminCampaignNotification({ adminEmail, campaign, creator }) {
+  const html = htmlWrap('New Campaign Awaiting Verification', `
+    <p>Hello Admin,</p>
+    <p>A new campaign has been submitted and is waiting for your review.</p>
+    <table>
+      <tr><th>Campaign Title</th><td>${campaign.title}</td></tr>
+      <tr><th>Category</th>      <td>${campaign.category || '—'}</td></tr>
+      <tr><th>Goal Amount</th>   <td>₹${Number(campaign.goal || 0).toLocaleString('en-IN')}</td></tr>
+      <tr><th>Creator Name</th>  <td>${creator.name  || '—'}</td></tr>
+      <tr><th>Creator Email</th> <td>${creator.email || '—'}</td></tr>
+      <tr><th>Creator Phone</th> <td>${creator.phone || '—'}</td></tr>
+      <tr><th>Wallet</th>        <td>${campaign.owner || '—'}</td></tr>
+      <tr><th>Submitted At</th>  <td>${new Date().toLocaleString('en-IN')}</td></tr>
+      <tr><th>Status</th>        <td><span class="badge-pending">Pending</span></td></tr>
+    </table>
+    <p>Please log in to the admin panel to review documents and approve or reject.</p>
+    <a class="btn" href="${process.env.ADMIN_PANEL_URL || 'http://localhost:5173/admin'}">Go to Admin Panel</a>
+  `)
+  await send({
+    to: adminEmail,
+    subject: `[Action Required] New Campaign Pending — "${campaign.title}"`,
+    html,
   })
+}
+
+// ── User: campaign approved ───────────────────────────────────────────────────
+export async function sendCampaignApprovedEmail({ userEmail, userName, campaign }) {
+  const html = htmlWrap('Campaign Approved ✅', `
+    <p>Hello ${userName || 'there'},</p>
+    <p>Great news! Your campaign has been <strong>reviewed and approved</strong> by our team.</p>
+    <table>
+      <tr><th>Campaign Title</th><td>${campaign.title}</td></tr>
+      <tr><th>Goal Amount</th>   <td>₹${Number(campaign.goal || 0).toLocaleString('en-IN')}</td></tr>
+      <tr><th>Status</th>        <td><span class="badge-approved">Approved</span></td></tr>
+    </table>
+    <p>Your campaign is now <strong>live</strong> and visible to donors. Start sharing it!</p>
+    <a class="btn" href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/campaigns/${campaign.contractAddress}">
+      View Your Campaign
+    </a>
+  `)
+  await send({
+    to: userEmail,
+    subject: `🎉 Your Campaign "${campaign.title}" has been Approved!`,
+    html,
+  })
+}
+
+// ── User: campaign rejected ───────────────────────────────────────────────────
+export async function sendCampaignRejectedEmail({ userEmail, userName, campaign, reason }) {
+  const html = htmlWrap('Campaign Verification Update', `
+    <p>Hello ${userName || 'there'},</p>
+    <p>After reviewing your submission, our team was <strong>unable to approve</strong> it at this time.</p>
+    <table>
+      <tr><th>Campaign Title</th><td>${campaign.title}</td></tr>
+      <tr><th>Status</th>        <td><span class="badge-rejected">Rejected</span></td></tr>
+      <tr><th>Reason</th>        <td>${reason || 'Did not meet verification requirements.'}</td></tr>
+    </table>
+    <p>You may resubmit after addressing the issues above. Contact support if you have questions.</p>
+    <a class="btn" href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard">Go to Dashboard</a>
+  `)
+  await send({
+    to: userEmail,
+    subject: `Update on Your Campaign "${campaign.title}" — Action Required`,
+    html,
+  })
+}
+
+export default {
+  sendEmailOtp,
+  sendAdminCampaignNotification,
+  sendCampaignApprovedEmail,
+  sendCampaignRejectedEmail,
 }

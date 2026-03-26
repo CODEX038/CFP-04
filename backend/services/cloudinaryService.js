@@ -10,12 +10,28 @@ import { v2 as cloudinary } from 'cloudinary'
 import { Readable } from 'stream'
 import fs from 'fs'
 
-// ── Configure Cloudinary ──────────────────────────────────────────────────────
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-})
+// ── Configure Cloudinary lazily (avoids dotenv timing issues with ES modules) ─
+let configured = false
+
+function ensureConfigured() {
+  if (configured) return
+  const { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } = process.env
+
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+    throw new Error(
+      'Cloudinary env vars missing. Ensure CLOUDINARY_CLOUD_NAME, ' +
+      'CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET are set in .env'
+    )
+  }
+
+  cloudinary.config({
+    cloud_name: CLOUDINARY_CLOUD_NAME,
+    api_key:    CLOUDINARY_API_KEY,
+    api_secret: CLOUDINARY_API_SECRET,
+  })
+
+  configured = true
+}
 
 /**
  * Upload a file from disk path to Cloudinary.
@@ -25,6 +41,7 @@ cloudinary.config({
  * @returns {Promise<{ url: string, publicId: string }>}
  */
 export async function uploadFromDisk(filePath, folder, options = {}) {
+  ensureConfigured()
   const result = await cloudinary.uploader.upload(filePath, {
     folder,
     resource_type: 'auto',   // handles images + PDFs + docs
@@ -40,8 +57,13 @@ export async function uploadFromDisk(filePath, folder, options = {}) {
 
 /**
  * Upload a file from a Buffer to Cloudinary (for in-memory multer).
+ * @param {Buffer} buffer
+ * @param {string} folder
+ * @param {object} options
+ * @returns {Promise<{ url: string, publicId: string }>}
  */
 export async function uploadFromBuffer(buffer, folder, options = {}) {
+  ensureConfigured()
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       { folder, resource_type: 'auto', ...options },
@@ -59,8 +81,11 @@ export async function uploadFromBuffer(buffer, folder, options = {}) {
 
 /**
  * Delete a file from Cloudinary by public ID.
+ * @param {string} publicId
+ * @param {string} resourceType - 'image' | 'video' | 'raw'
  */
 export async function deleteFile(publicId, resourceType = 'image') {
+  ensureConfigured()
   try {
     await cloudinary.uploader.destroy(publicId, { resource_type: resourceType })
   } catch (err) {
