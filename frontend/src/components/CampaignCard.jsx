@@ -7,6 +7,7 @@ const CampaignCard = ({ campaign, onClick }) => {
     description,
     goal,
     amountRaised,
+    raised,
     deadline,
     owner,
     ownerName,
@@ -14,26 +15,29 @@ const CampaignCard = ({ campaign, onClick }) => {
     imageHash,
     category,
     paused,
-    paymentType, // Add this field
+    paymentType,
   } = campaign
 
-  const pct   = Math.min((parseFloat(amountRaised) / parseFloat(goal)) * 100, 100)
-  const short = (addr) => `${addr.slice(0, 6)}...${addr.slice(-4)}`
-  const isExpired = Date.now() > deadline
-  const isGoalMet = parseFloat(amountRaised) >= parseFloat(goal)
-  
-  // Determine currency display
-  const isFiat = paymentType === 'fiat'
-  const currency = isFiat ? 'INR' : 'ETH'
-  const currencySymbol = isFiat ? '₹' : ''
-  
-  // Format amount with appropriate decimals
+  // ── Correct raised amount based on payment type ───────────────────────────
+  // Fiat campaigns: donation controller increments `raised` (in INR)
+  // ETH campaigns:  contract listener increments `amountRaised` (in ETH)
+  const isFiat       = paymentType === 'fiat'
+  const actualRaised = isFiat
+    ? parseFloat(raised       || 0)
+    : parseFloat(amountRaised || 0)
+  const actualGoal   = parseFloat(goal || 0)
+  const pct          = actualGoal > 0 ? Math.min((actualRaised / actualGoal) * 100, 100) : 0
+
+  const short      = (addr) => `${addr.slice(0, 6)}...${addr.slice(-4)}`
+  const isExpired  = Date.now() > deadline * 1000
+  const isGoalMet  = actualRaised >= actualGoal
+
+  const currency       = isFiat ? 'INR' : 'ETH'
+  const currencySymbol = isFiat ? '₹'   : ''
+
   const formatAmount = (amount) => {
     const num = parseFloat(amount)
-    if (isFiat) {
-      // Indian number formatting with commas (e.g., ₹1,00,000)
-      return num.toLocaleString('en-IN', { maximumFractionDigits: 0 })
-    }
+    if (isFiat) return num.toLocaleString('en-IN', { maximumFractionDigits: 0 })
     return num.toFixed(3)
   }
 
@@ -100,9 +104,11 @@ const CampaignCard = ({ campaign, onClick }) => {
         <div className="flex justify-between items-center mt-2 mb-4 text-sm">
           <div>
             <span className="font-semibold text-gray-900">
-              {currencySymbol}{formatAmount(amountRaised)} {currency}
+              {currencySymbol}{formatAmount(actualRaised)} {currency}
             </span>
-            <span className="text-gray-400"> of {currencySymbol}{formatAmount(goal)} {currency}</span>
+            <span className="text-gray-400">
+              {' '}of {currencySymbol}{formatAmount(actualGoal)} {currency}
+            </span>
           </div>
           <span className={`font-medium ${pct >= 100 ? 'text-green-600' : 'text-purple-600'}`}>
             {Math.round(pct)}%
