@@ -1,3 +1,4 @@
+import mongoose from 'mongoose'
 import Campaign from '../models/Campaign.js'
 import User     from '../models/User.js'
 import { notifyAdminNewCampaign } from '../services/notificationService.js'
@@ -20,9 +21,22 @@ export const getAllCampaigns = async (req, res) => {
 
 export const getCampaign = async (req, res) => {
   try {
-    const campaign = await Campaign.findOne({
-      contractAddress: req.params.address.toLowerCase(),
-    })
+    const { address } = req.params
+
+    // Build query: always search by contractAddress.
+    // Also search by _id if the param looks like a valid MongoDB ObjectId —
+    // this covers fiat campaigns whose contractAddress is a fake placeholder
+    // but whose detail page URL contains the MongoDB _id.
+    const orConditions = [
+      { contractAddress: address.toLowerCase() },
+    ]
+
+    if (mongoose.Types.ObjectId.isValid(address)) {
+      orConditions.push({ _id: address })
+    }
+
+    const campaign = await Campaign.findOne({ $or: orConditions })
+
     if (!campaign) return res.status(404).json({ message: 'Campaign not found' })
     res.json(campaign)
   } catch (err) {
@@ -34,7 +48,7 @@ export const createCampaign = async (req, res) => {
   try {
     const {
       contractAddress, factoryIndex, owner, ownerName,
-      ownerUsername, ownerEmail, ownerPhone,  // ← ownerEmail + ownerPhone now accepted
+      ownerUsername, ownerEmail, ownerPhone,
       title, description, imageHash,
       category, goal, deadline, txHash,
       paymentType,   // 'eth' | 'fiat'
@@ -64,7 +78,6 @@ export const createCampaign = async (req, res) => {
 
     // ── Notify admin about new pending campaign ───────────────────────────────
     try {
-      // Search by wallet address OR username OR email — covers both ETH and fiat creators
       const orConditions = []
       if (owner && owner !== 'unknown') {
         orConditions.push({ walletAddress: owner.toLowerCase() })
@@ -90,7 +103,6 @@ export const createCampaign = async (req, res) => {
               phone: creator.phone || ownerPhone || '',
             }
           : {
-              // Fallback: use whatever was passed from the frontend directly
               name:  ownerName  || owner,
               email: ownerEmail || '',
               phone: ownerPhone || '',

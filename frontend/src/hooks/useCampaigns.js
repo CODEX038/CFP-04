@@ -18,19 +18,50 @@ export const useCampaigns = () => {
     setLoading(true)
     setError(null)
     try {
-      const { data } = await axios.get(
+      const response = await axios.get(
         `${import.meta.env.VITE_API_URL}/campaigns`
       )
 
-      if (data.length > 0 && provider) {
+      // Handle both response shapes: plain array or wrapped { data: [...] }
+      const data = Array.isArray(response.data)
+        ? response.data
+        : response.data.data || []
+
+      if (data.length > 0) {
         const enriched = await Promise.all(
           data.map(async (c) => {
-            // ── Fiat campaign: no on-chain data, use DB values as-is ──────────
+
+            // ── Fiat campaign: re-fetch fresh stats from backend ──────────────
+            // The list endpoint may return stale amountRaised. Always pull the
+            // individual campaign record so we get the Stripe-updated value.
             if (!isOnChain(c)) {
-              return {
-                ...c,
-                deadline: c.deadline * 1000,
+              try {
+                const id = c._id || c.contractAddress || c.id
+                const detail = await axios.get(
+                  `${import.meta.env.VITE_API_URL}/campaigns/${id}`
+                )
+                const fresh = detail.data.data || detail.data
+                return {
+                  ...c,
+                  ...fresh,
+                  amountRaised : fresh.amountRaised  ?? c.amountRaised  ?? 0,
+                  funders      : fresh.funders       ?? c.funders       ?? 0,
+                  deadline     : (fresh.deadline     ?? c.deadline) * 1000,
+                }
+              } catch {
+                // Fallback to list data if detail fetch fails
+                return {
+                  ...c,
+                  amountRaised : c.amountRaised ?? 0,
+                  funders      : c.funders      ?? 0,
+                  deadline     : c.deadline * 1000,
+                }
               }
+            }
+
+            // ── ETH campaign: no provider yet, use DB values ──────────────────
+            if (!provider) {
+              return { ...c, deadline: c.deadline * 1000 }
             }
 
             // ── ETH campaign: sync live on-chain state ────────────────────────
@@ -45,10 +76,10 @@ export const useCampaigns = () => {
               ])
               return {
                 ...c,
-                amountRaised: ethers.formatEther(amountRaised),
+                amountRaised : ethers.formatEther(amountRaised),
                 claimed,
                 paused,
-                deadline: c.deadline * 1000,
+                deadline     : c.deadline * 1000,
               }
             } catch {
               return { ...c, deadline: c.deadline * 1000 }
@@ -56,6 +87,7 @@ export const useCampaigns = () => {
           })
         )
         setCampaigns(enriched)
+
       } else if (provider && CONTRACT_ADDRESS) {
         // Fallback: fetch ETH campaigns directly from factory contract
         const factory  = new ethers.Contract(CONTRACT_ADDRESS, FACTORY_ABI, provider)
@@ -70,29 +102,38 @@ export const useCampaigns = () => {
                 contract.paused(),
               ])
               return {
-                id:              Number(c.index),
-                contractAddress: c.campaignAddress,
-                owner:           c.owner,
-                title:           c.title,
-                description:     c.description,
-                imageHash:       c.imageHash,
-                goal:            ethers.formatEther(c.goal),
-                amountRaised:    ethers.formatEther(amountRaised),
-                deadline:        Number(c.deadline) * 1000,
+                id              : Number(c.index),
+                contractAddress : c.campaignAddress,
+                owner           : c.owner,
+                title           : c.title,
+                description     : c.description,
+                imageHash       : c.imageHash,
+                goal            : ethers.formatEther(c.goal),
+                amountRaised    : ethers.formatEther(amountRaised),
+                deadline        : Number(c.deadline) * 1000,
                 claimed,
                 paused,
-                paymentType:     'eth',
+                paymentType     : 'eth',
               }
             } catch { return null }
           })
         )
         setCampaigns(enriched.filter(Boolean))
+
       } else {
-        setCampaigns(data.map(c => ({ ...c, deadline: c.deadline * 1000 })))
+        setCampaigns(
+          data.map(c => ({
+            ...c,
+            amountRaised : c.amountRaised ?? 0,
+            funders      : c.funders      ?? 0,
+            deadline     : c.deadline * 1000,
+          }))
+        )
       }
     } catch (err) {
       console.error('fetchCampaigns error:', err)
       setError(err.message)
+      setCampaigns([])
     } finally {
       setLoading(false)
     }
@@ -118,9 +159,12 @@ export const useCampaign = (contractAddress) => {
     setError(null)
     try {
       // Always fetch from backend first — it has paymentType
-      const { data } = await axios.get(
+      const response = await axios.get(
         `${import.meta.env.VITE_API_URL}/campaigns/${contractAddress}`
       )
+
+      // Handle both response shapes
+      const data = response.data.data || response.data
 
       if (!data) {
         setError('Campaign not found.')
@@ -131,7 +175,9 @@ export const useCampaign = (contractAddress) => {
       if (!isOnChain(data)) {
         setCampaign({
           ...data,
-          deadline: data.deadline * 1000,
+          amountRaised : data.amountRaised ?? 0,
+          funders      : data.funders      ?? 0,
+          deadline     : data.deadline * 1000,
         })
         return
       }
@@ -152,10 +198,10 @@ export const useCampaign = (contractAddress) => {
           ])
           setCampaign({
             ...data,
-            amountRaised: ethers.formatEther(amountRaised),
+            amountRaised : ethers.formatEther(amountRaised),
             claimed,
             paused,
-            deadline: data.deadline * 1000,
+            deadline     : data.deadline * 1000,
           })
           return
         } catch (chainErr) {
@@ -164,7 +210,12 @@ export const useCampaign = (contractAddress) => {
       }
 
       // Provider unavailable — use DB data only
-      setCampaign({ ...data, deadline: data.deadline * 1000 })
+      setCampaign({
+        ...data,
+        amountRaised : data.amountRaised ?? 0,
+        funders      : data.funders      ?? 0,
+        deadline     : data.deadline * 1000,
+      })
 
     } catch (err) {
       console.error('fetchCampaign error:', err)
