@@ -21,8 +21,23 @@ const __dirname = path.dirname(__filename)
 const app = express()
 const PORT = process.env.PORT || 5000
 
+// ── Allowed origins ───────────────────────────────────────────────────────────
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://cfp-04-4u5n.vercel.app',
+  process.env.FRONTEND_URL,
+].filter(Boolean)
+
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true)
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true)
+    } else {
+      callback(new Error(`CORS blocked: ${origin}`))
+    }
+  },
   credentials: true,
 }))
 
@@ -35,7 +50,10 @@ app.use(express.json())
 app.use(
   '/uploads',
   (req, res, next) => {
-    res.header('Access-Control-Allow-Origin', 'http://localhost:5173')
+    const origin = req.headers.origin
+    if (allowedOrigins.includes(origin)) {
+      res.header('Access-Control-Allow-Origin', origin)
+    }
     res.header('Access-Control-Allow-Methods', 'GET')
     next()
   },
