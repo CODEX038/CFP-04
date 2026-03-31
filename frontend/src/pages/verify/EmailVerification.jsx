@@ -1,20 +1,15 @@
-/**
- * pages/verify/EmailVerification.jsx
- * Email OTP verification — Vite + React + React Router v6
- */
-
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import OtpInput from "../../components/OtpInput";
 import ResendButton from "../../components/ResendButton";
 import "./Verification.css";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API = import.meta.env.VITE_API_URL;
 
 export default function EmailVerification() {
   const location = useLocation();
-  const [step, setStep]       = useState("enterEmail"); // enterEmail | enterOtp | done
-  const [email, setEmail]     = useState(location.state?.email || ""); // ✅ pre-filled from register
+  const [step, setStep]       = useState("enterEmail");
+  const [email, setEmail]     = useState(location.state?.email || "");
   const [otp, setOtp]         = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
@@ -25,7 +20,6 @@ export default function EmailVerification() {
     setSuccess("");
   }
 
-  // ── Step 1: Send OTP ────────────────────────────────────────────────────────
   async function handleSendOtp(e) {
     e.preventDefault();
     clearMessages();
@@ -53,7 +47,6 @@ export default function EmailVerification() {
     }
   }
 
-  // ── Step 2: Verify OTP ──────────────────────────────────────────────────────
   async function handleVerifyOtp(e) {
     e.preventDefault();
     clearMessages();
@@ -81,7 +74,6 @@ export default function EmailVerification() {
     }
   }
 
-  // ── Resend OTP ──────────────────────────────────────────────────────────────
   async function handleResend() {
     clearMessages();
     const token = localStorage.getItem("token");
@@ -98,14 +90,11 @@ export default function EmailVerification() {
     setSuccess("OTP resent successfully.");
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   const steps = ["enterEmail", "enterOtp", "done"];
 
   return (
     <div className="verify-page">
       <div className="verify-card">
-
-        {/* Header */}
         <div className="verify-header">
           <div className="verify-icon">✉️</div>
           <h1>Email Verification</h1>
@@ -116,7 +105,6 @@ export default function EmailVerification() {
           </p>
         </div>
 
-        {/* Progress dots */}
         <div className="verify-progress">
           {steps.map((s, i) => (
             <div
@@ -130,11 +118,9 @@ export default function EmailVerification() {
           ))}
         </div>
 
-        {/* Alerts */}
         {error   && <div className="verify-alert verify-alert--error">⚠ {error}</div>}
         {success && !error && <div className="verify-alert verify-alert--success">✓ {success}</div>}
 
-        {/* Step 1 — enter email */}
         {step === "enterEmail" && (
           <form onSubmit={handleSendOtp} className="verify-form">
             <div className="verify-field">
@@ -156,7 +142,6 @@ export default function EmailVerification() {
           </form>
         )}
 
-        {/* Step 2 — enter OTP */}
         {step === "enterOtp" && (
           <form onSubmit={handleVerifyOtp} className="verify-form">
             <div className="verify-field">
@@ -181,7 +166,6 @@ export default function EmailVerification() {
           </form>
         )}
 
-        {/* Step 3 — done */}
         {step === "done" && (
           <div className="verify-done">
             <div className="verify-checkmark">✓</div>
@@ -191,7 +175,6 @@ export default function EmailVerification() {
             </Link>
           </div>
         )}
-
       </div>
     </div>
   );

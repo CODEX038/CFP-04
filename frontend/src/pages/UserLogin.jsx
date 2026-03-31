@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 import { useAuth } from "../context/AuthContext";
 
-// ─── BUG 1 FIX ───────────────────────────────────────────────────────────────
-// Was: import.meta.env.VITE_API_URL + "/api"  → produced /api/api/auth/...
-// Fix: VITE_API_URL already ends at the backend root, append /api here once
-const BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const API  = `${BASE}/api`;
+// ─── API Configuration ───────────────────────────────────────────────────────
+const API = import.meta.env.VITE_API_URL;
+
+if (!API) {
+  console.error('❌ VITE_API_URL is not defined! Check your .env file.');
+}
 
 // ── Inline OTP boxes ──────────────────────────────────────────────────────────
 function OtpBoxes({ value, onChange, disabled }) {
@@ -49,12 +50,11 @@ function OtpBoxes({ value, onChange, disabled }) {
 }
 
 // ── Resend button ─────────────────────────────────────────────────────────────
-// BUG 5 FIX: was useState(() => setInterval...) — should be useEffect
 function ResendBtn({ onResend, disabled }) {
   const [secs, setSecs] = useState(60);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {                          // ← was useState (wrong hook)
+  useEffect(() => {
     const t = setInterval(() => setSecs((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => clearInterval(t);
   }, []);
@@ -98,7 +98,6 @@ const UserLogin = () => {
     profilePhotoFile: null, documentType: "", documentFile: null,
   });
 
-  // BUG 4 FIX: use a ref to track OTP send success — avoids async state race
   const emailOtpSent = useRef(false);
 
   const setL = (k, v) => setLoginForm((f) => ({ ...f, [k]: v }));
@@ -139,7 +138,7 @@ const UserLogin = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       setSuccess(`OTP sent to ${reg.email}`);
-      emailOtpSent.current = true;          // ← ref updated synchronously
+      emailOtpSent.current = true;
     } catch (e) {
       setError(e.message);
     } finally {
@@ -170,8 +169,6 @@ const UserLogin = () => {
   };
 
   // ── Create account ────────────────────────────────────────────────────────
-  // BUG 2+3 FIX: use correct endpoint names and send FormData so
-  // multer + Cloudinary can receive the file on the backend
   const createAccount = async () => {
     const fd = new FormData();
     fd.append("name",     reg.name);
@@ -182,7 +179,6 @@ const UserLogin = () => {
     fd.append("dob",      reg.dob);
     fd.append("location", reg.location);
 
-    // Attach photo file directly — multer on /register will pick it up
     if (reg.profilePhotoFile) {
       fd.append("profilePhoto", reg.profilePhotoFile);
     }
@@ -190,11 +186,9 @@ const UserLogin = () => {
     const res = await fetch(`${API}/auth/register`, {
       method: "POST",
       body: fd,
-      // ← Do NOT set Content-Type — browser sets multipart boundary automatically
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || "Registration failed");
-    // Store token immediately for subsequent authenticated calls
     localStorage.setItem("token", data.token);
     return data.token;
   };
@@ -241,12 +235,11 @@ const UserLogin = () => {
   };
 
   // ── Step navigation ───────────────────────────────────────────────────────
-  // BUG 4 FIX: check emailOtpSent.current (ref) not error state
   const handleContinueBasic = async () => {
     if (!validateBasic()) return;
     clear();
     await sendEmailOtp();
-    if (emailOtpSent.current) setStep(1);   // ← ref is reliable, state is not
+    if (emailOtpSent.current) setStep(1);
   };
 
   const handleContinuePersonal = async () => {
@@ -280,15 +273,12 @@ const UserLogin = () => {
   };
 
   // ── Final step: upload document + auto-login ──────────────────────────────
-  // BUG 6 FIX: token is already in localStorage from createAccount()
-  // Use it directly — don't try to get it from login() result
   const handleFinish = async () => {
     setLoading(true); clear();
     try {
       const token = localStorage.getItem("token");
 
       if (reg.documentFile && token) {
-        // BUG 2 FIX: correct endpoint is /auth/upload-document (not /auth/upload/docs)
         const fd = new FormData();
         fd.append("document",     reg.documentFile);
         fd.append("documentType", reg.documentType || "identity");
@@ -306,7 +296,6 @@ const UserLogin = () => {
         navigate("/app");
       }, 800);
     } catch {
-      // Even if document upload fails, still log the user in
       setTimeout(async () => {
         await login(reg.email, reg.password);
         navigate("/app");
