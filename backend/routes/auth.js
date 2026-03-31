@@ -23,9 +23,7 @@ const router = Router()
 // ── Multer: saves to OS temp dir, then Cloudinary picks it up ────────────────
 const upload = multer({
   storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, os.tmpdir())
-    },
+    destination: (req, file, cb) => cb(null, os.tmpdir()),
     filename: (req, file, cb) => {
       const ext  = path.extname(file.originalname)
       const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`
@@ -45,13 +43,21 @@ const upload = multer({
 })
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-router.post('/register', register)
+// FIX: upload.fields() added so req.files is populated in register()
+router.post(
+  '/register',
+  upload.fields([
+    { name: 'profilePhoto', maxCount: 1 },
+    { name: 'document',     maxCount: 1 },
+  ]),
+  register
+)
 router.post('/login',    login)
-router.get('/me',        protect, getMe)
+router.get ('/me',       protect, getMe)
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
-router.get('/users',                       protect, adminOnly, getAllUsers)
-router.patch('/users/:id/verify-document', protect, adminOnly, verifyDocument)
+router.get   ('/users',                       protect, adminOnly, getAllUsers)
+router.patch ('/users/:id/verify-document',   protect, adminOnly, verifyDocument)
 
 // ── User uploads (Cloudinary) ─────────────────────────────────────────────────
 router.post('/upload-document', protect, upload.single('document'),     uploadUserDocument)
