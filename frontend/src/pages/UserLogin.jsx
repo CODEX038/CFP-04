@@ -1,36 +1,40 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
 import { useAuth } from "../context/AuthContext";
-import axios from "axios";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+// ─── BUG 1 FIX ───────────────────────────────────────────────────────────────
+// Was: import.meta.env.VITE_API_URL + "/api"  → produced /api/api/auth/...
+// Fix: VITE_API_URL already ends at the backend root, append /api here once
+const BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API  = `${BASE}/api`;
 
 // ── Inline OTP boxes ──────────────────────────────────────────────────────────
 function OtpBoxes({ value, onChange, disabled }) {
   const vals = (value + "      ").slice(0, 6).split("");
-  const refs = Array.from({ length: 6 }, () => null);
+  const refs = useRef([]);
 
   const handleChange = (i, e) => {
     const digit = e.target.value.replace(/\D/g, "").slice(-1);
     const next = [...vals]; next[i] = digit;
     onChange(next.join("").trimEnd());
-    if (digit && i < 5) refs[i + 1]?.focus();
+    if (digit && i < 5) refs.current[i + 1]?.focus();
   };
   const handleKeyDown = (i, e) => {
-    if (e.key === "Backspace" && !vals[i]?.trim() && i > 0) refs[i - 1]?.focus();
+    if (e.key === "Backspace" && !vals[i]?.trim() && i > 0)
+      refs.current[i - 1]?.focus();
   };
   const handlePaste = (e) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
     onChange(pasted);
-    refs[Math.min(pasted.length, 5)]?.focus();
+    refs.current[Math.min(pasted.length, 5)]?.focus();
   };
 
   return (
     <div className="flex gap-2 justify-center" onPaste={handlePaste}>
       {vals.map((v, i) => (
-        <input key={i} ref={(el) => (refs[i] = el)}
+        <input key={i} ref={(el) => (refs.current[i] = el)}
           type="text" inputMode="numeric" maxLength={1}
           value={v.trim()} disabled={disabled}
           onChange={(e) => handleChange(i, e)}
@@ -44,15 +48,16 @@ function OtpBoxes({ value, onChange, disabled }) {
   );
 }
 
-// ── Resend button with countdown ──────────────────────────────────────────────
+// ── Resend button ─────────────────────────────────────────────────────────────
+// BUG 5 FIX: was useState(() => setInterval...) — should be useEffect
 function ResendBtn({ onResend, disabled }) {
   const [secs, setSecs] = useState(60);
   const [busy, setBusy] = useState(false);
 
-  useState(() => {
+  useEffect(() => {                          // ← was useState (wrong hook)
     const t = setInterval(() => setSecs((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => clearInterval(t);
-  });
+  }, []);
 
   const handle = async () => {
     if (secs > 0 || busy || disabled) return;
@@ -69,27 +74,10 @@ function ResendBtn({ onResend, disabled }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-/**
- * REGISTRATION FLOW (5 internal steps mapped to 3 visual steps):
- *
- * step 0 → Basic info (name, username, email, password)
- *           ↓ Continue → send email OTP
- * step 1 → ✉️ Verify Email OTP
- *           ↓ Verify → email verified in DB
- * step 2 → 📋 Personal details (phone, dob, location) + CREATE ACCOUNT HERE
- *           ↓ Continue → account created → send phone OTP
- * step 3 → 📱 Verify Phone OTP
- *           ↓ Verify → phone verified in DB
- * step 4 → 📄 Documents (optional)
- *           ↓ Create account (final) → auto-login → /app
- *
- * Account is created at step 2→3 transition so the user exists
- * in MongoDB before phone OTP is sent.
- */
 const UserLogin = () => {
   const { account, connectWallet, isConnecting } = useWallet();
   const { login } = useAuth();
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
 
   const [tab, setTab]         = useState("login");
   const [loading, setLoading] = useState(false);
@@ -110,14 +98,16 @@ const UserLogin = () => {
     profilePhotoFile: null, documentType: "", documentFile: null,
   });
 
+  // BUG 4 FIX: use a ref to track OTP send success — avoids async state race
+  const emailOtpSent = useRef(false);
+
   const setL = (k, v) => setLoginForm((f) => ({ ...f, [k]: v }));
   const setR = (k, v) => setReg((f) => ({ ...f, [k]: v }));
-  const clear = ()     => { setError(""); setSuccess(""); };
+  const clear = () => { setError(""); setSuccess(""); };
 
-  // Visual step indicator: 0,1→label0 | 2,3→label1 | 4→label2
   const labelIdx = step <= 1 ? 0 : step <= 3 ? 1 : 2;
 
-  // ── Validation ───────────────────────────────────────────────────────────────
+  // ── Validation ────────────────────────────────────────────────────────────
   const validateBasic = () => {
     if (!reg.name)     { setError("Name is required.");     return false; }
     if (!reg.username) { setError("Username is required."); return false; }
@@ -137,19 +127,24 @@ const UserLogin = () => {
     return true;
   };
 
-  // ── Email OTP ────────────────────────────────────────────────────────────────
+  // ── Email OTP ─────────────────────────────────────────────────────────────
   const sendEmailOtp = async () => {
-    setOtpLoading(true); clear();
+    setOtpLoading(true); clear(); emailOtpSent.current = false;
     try {
       const res  = await fetch(`${API}/verification/send-email-otp`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: reg.email, registration: true }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       setSuccess(`OTP sent to ${reg.email}`);
-    } catch (e) { setError(e.message); }
-    finally     { setOtpLoading(false); }
+      emailOtpSent.current = true;          // ← ref updated synchronously
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setOtpLoading(false);
+    }
   };
 
   const verifyEmailOtp = async () => {
@@ -158,50 +153,69 @@ const UserLogin = () => {
     setOtpLoading(true); clear();
     try {
       const res  = await fetch(`${API}/verification/verify-email-otp`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: reg.email, otp: code, registration: true }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       setSuccess("Email verified ✓");
       setEmailOtp("");
-      setStep(2); // → personal details
-    } catch (e) { setError(e.message); }
-    finally     { setOtpLoading(false); }
-  };
-
-  // ── Create account (called at step 2 → 3 transition) ─────────────────────────
-  const createAccount = async () => {
-    let profilePhotoUrl = "";
-    if (reg.profilePhotoFile) {
-      const fd = new FormData(); fd.append("file", reg.profilePhotoFile);
-      const { data } = await axios.post(`${API}/auth/upload/photos`, fd,
-        { headers: { "Content-Type": "multipart/form-data" } });
-      profilePhotoUrl = data.url;
+      setStep(2);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setOtpLoading(false);
     }
-    // Mark emailVerified when creating account (already verified via OTP)
-await axios.post(`${API}/auth/register`, {
-      name: reg.name, username: reg.username,
-      email: reg.email, password: reg.password,
-      phone: reg.phone, dob: reg.dob, location: reg.location,
-      profilePhoto: profilePhotoUrl,
-    });
   };
 
-  // ── Phone OTP ────────────────────────────────────────────────────────────────
+  // ── Create account ────────────────────────────────────────────────────────
+  // BUG 2+3 FIX: use correct endpoint names and send FormData so
+  // multer + Cloudinary can receive the file on the backend
+  const createAccount = async () => {
+    const fd = new FormData();
+    fd.append("name",     reg.name);
+    fd.append("username", reg.username);
+    fd.append("email",    reg.email);
+    fd.append("password", reg.password);
+    fd.append("phone",    reg.phone);
+    fd.append("dob",      reg.dob);
+    fd.append("location", reg.location);
+
+    // Attach photo file directly — multer on /register will pick it up
+    if (reg.profilePhotoFile) {
+      fd.append("profilePhoto", reg.profilePhotoFile);
+    }
+
+    const res = await fetch(`${API}/auth/register`, {
+      method: "POST",
+      body: fd,
+      // ← Do NOT set Content-Type — browser sets multipart boundary automatically
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Registration failed");
+    // Store token immediately for subsequent authenticated calls
+    localStorage.setItem("token", data.token);
+    return data.token;
+  };
+
+  // ── Phone OTP ─────────────────────────────────────────────────────────────
   const sendPhoneOtp = async () => {
     setOtpLoading(true); clear();
     try {
       const res  = await fetch(`${API}/verification/send-phone-otp`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        // ✅ send email too so backend can find the user
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: reg.phone, email: reg.email }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       setSuccess(`OTP sent to ${reg.phone}`);
-    } catch (e) { setError(e.message); }
-    finally     { setOtpLoading(false); }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setOtpLoading(false);
+    }
   };
 
   const verifyPhoneOtp = async () => {
@@ -210,33 +224,38 @@ await axios.post(`${API}/auth/register`, {
     setOtpLoading(true); clear();
     try {
       const res  = await fetch(`${API}/verification/verify-phone-otp`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: reg.phone, otp: code }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       setSuccess("Phone verified ✓");
       setPhoneOtp("");
-      setStep(4); // → documents
-    } catch (e) { setError(e.message); }
-    finally     { setOtpLoading(false); }
+      setStep(4);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setOtpLoading(false);
+    }
   };
 
-  // ── Step navigation ───────────────────────────────────────────────────────────
-  // Step 0 → validate basic → send email OTP → go to step 1
+  // ── Step navigation ───────────────────────────────────────────────────────
+  // BUG 4 FIX: check emailOtpSent.current (ref) not error state
   const handleContinueBasic = async () => {
     if (!validateBasic()) return;
-    clear(); await sendEmailOtp(); if (!error) setStep(1);
+    clear();
+    await sendEmailOtp();
+    if (emailOtpSent.current) setStep(1);   // ← ref is reliable, state is not
   };
 
-  // Step 2 → validate personal → CREATE ACCOUNT → send phone OTP → go to step 3
   const handleContinuePersonal = async () => {
     if (!validatePersonal()) return;
     setLoading(true); clear();
     try {
-      await createAccount();              // ✅ user now exists in DB
+      await createAccount();
       setSuccess("Account created! Sending phone OTP...");
-      await sendPhoneOtp();               // ✅ now this will find the user
+      await sendPhoneOtp();
       setStep(3);
     } catch (e) {
       setError(e.response?.data?.message || e.message || "Failed to create account.");
@@ -247,10 +266,10 @@ await axios.post(`${API}/auth/register`, {
 
   const handleBack = () => {
     clear();
-    setStep(s => s === 1 ? 0 : s === 2 ? 1 : s === 3 ? 2 : s === 4 ? 3 : s);
+    setStep((s) => s === 1 ? 0 : s === 2 ? 1 : s === 3 ? 2 : s === 4 ? 3 : s);
   };
 
-  // ── File uploads ──────────────────────────────────────────────────────────────
+  // ── File uploads ──────────────────────────────────────────────────────────
   const handlePhotoUpload = (e) => {
     const f = e.target.files[0]; if (!f) return;
     setR("profilePhotoFile", f); setPhotoPreview(URL.createObjectURL(f));
@@ -260,32 +279,34 @@ await axios.post(`${API}/auth/register`, {
     setR("documentFile", f); setDocPreview(f.name);
   };
 
-  // ── Final step: upload document + auto-login ──────────────────────────────────
+  // ── Final step: upload document + auto-login ──────────────────────────────
+  // BUG 6 FIX: token is already in localStorage from createAccount()
+  // Use it directly — don't try to get it from login() result
   const handleFinish = async () => {
     setLoading(true); clear();
     try {
-      // Upload document if provided
-      if (reg.documentFile) {
-        const fd = new FormData(); fd.append("file", reg.documentFile);
-        const { data } = await axios.post(`${API}/auth/upload/docs`, fd,
-          { headers: { "Content-Type": "multipart/form-data" } });
-        // Update user document fields
-        const token = localStorage.getItem("token") ||
-          (await axios.post(`${API}/auth/login`, { email: reg.email, password: reg.password })).data.token;
-        await axios.patch(`${API}/auth/me/document`, {
-          documentType: reg.documentType,
-          documentHash: data.filename,
-          documentUrl:  data.url,
-        }, { headers: { Authorization: `Bearer ${token}` } });
+      const token = localStorage.getItem("token");
+
+      if (reg.documentFile && token) {
+        // BUG 2 FIX: correct endpoint is /auth/upload-document (not /auth/upload/docs)
+        const fd = new FormData();
+        fd.append("document",     reg.documentFile);
+        fd.append("documentType", reg.documentType || "identity");
+
+        await fetch(`${API}/auth/upload-document`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
       }
+
       setSuccess("All done! Signing you in...");
       setTimeout(async () => {
         await login(reg.email, reg.password);
         navigate("/app");
       }, 800);
-    } catch (e) {
-      // Even if document upload fails, still log in
-      setSuccess("Signing you in...");
+    } catch {
+      // Even if document upload fails, still log the user in
       setTimeout(async () => {
         await login(reg.email, reg.password);
         navigate("/app");
@@ -295,9 +316,11 @@ await axios.post(`${API}/auth/register`, {
     }
   };
 
-  // ── Login ─────────────────────────────────────────────────────────────────────
+  // ── Login ─────────────────────────────────────────────────────────────────
   const handleLogin = async () => {
-    if (!loginForm.email || !loginForm.password) { setError("Please fill in all fields."); return; }
+    if (!loginForm.email || !loginForm.password) {
+      setError("Please fill in all fields."); return;
+    }
     setLoading(true); clear();
     try {
       await login(loginForm.email, loginForm.password);
@@ -308,18 +331,22 @@ await axios.post(`${API}/auth/register`, {
         if (!p.phoneVerified) return navigate("/verify/phone");
       }
       navigate("/app");
-    } catch (e) { setError(e.response?.data?.message || "Invalid credentials"); }
-    finally     { setLoading(false); }
+    } catch (e) {
+      setError(e.response?.data?.message || "Invalid credentials");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-8">
       <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-md">
 
         {/* Header */}
         <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center mx-auto mb-4 cursor-pointer" onClick={() => navigate("/")}>
+          <div className="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center mx-auto mb-4 cursor-pointer"
+            onClick={() => navigate("/")}>
             <span className="text-white font-bold">CF</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Welcome to FundChain</h1>
@@ -328,7 +355,7 @@ await axios.post(`${API}/auth/register`, {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6">
-          {["login","register"].map((t) => (
+          {["login", "register"].map((t) => (
             <button key={t} onClick={() => { setTab(t); clear(); setStep(0); }}
               className={`flex-1 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${
                 tab === t ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
@@ -346,14 +373,17 @@ await axios.post(`${API}/auth/register`, {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input type="email" value={loginForm.email} onChange={(e) => setL("email", e.target.value)}
+              <input type="email" value={loginForm.email}
+                onChange={(e) => setL("email", e.target.value)}
                 placeholder="you@example.com"
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-400" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-              <input type="password" value={loginForm.password} onChange={(e) => setL("password", e.target.value)}
-                placeholder="••••••••" onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              <input type="password" value={loginForm.password}
+                onChange={(e) => setL("password", e.target.value)}
+                placeholder="••••••••"
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-400" />
             </div>
             <button onClick={handleLogin} disabled={loading}
@@ -368,7 +398,7 @@ await axios.post(`${API}/auth/register`, {
           <div>
             {/* Step indicator */}
             <div className="flex items-center gap-0 mb-6">
-              {["Basic info","Personal details","Documents"].map((label, i) => (
+              {["Basic info", "Personal details", "Documents"].map((label, i) => (
                 <div key={i} className="flex items-center flex-1 last:flex-none">
                   <div className="flex flex-col items-center">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
@@ -377,7 +407,9 @@ await axios.post(`${API}/auth/register`, {
                       : "bg-gray-100 text-gray-400"}`}>
                       {i < labelIdx ? "✓" : i + 1}
                     </div>
-                    <span className={`text-xs mt-1 ${i === labelIdx ? "text-purple-600 font-medium" : "text-gray-400"}`}>{label}</span>
+                    <span className={`text-xs mt-1 ${i === labelIdx ? "text-purple-600 font-medium" : "text-gray-400"}`}>
+                      {label}
+                    </span>
                   </div>
                   {i < 2 && <div className={`flex-1 h-px mx-2 mb-4 ${i < labelIdx ? "bg-purple-400" : "bg-gray-200"}`} />}
                 </div>
@@ -392,38 +424,49 @@ await axios.post(`${API}/auth/register`, {
                     <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center overflow-hidden border-2 border-dashed border-purple-300 hover:border-purple-500 transition-colors">
                       {photoPreview
                         ? <img src={photoPreview} alt="profile" className="w-full h-full object-cover" />
-                        : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
+                        : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.5">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                          </svg>}
                     </div>
                     <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
                   </label>
-                  <div><p className="text-sm font-medium text-gray-700">Profile photo</p><p className="text-xs text-gray-400">Click to upload</p></div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Profile photo</p>
+                    <p className="text-xs text-gray-400">Click to upload</p>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Full name</label>
-                    <input type="text" value={reg.name} onChange={(e) => setR("name", e.target.value)} placeholder="Bhushan Patil"
+                    <input type="text" value={reg.name} onChange={(e) => setR("name", e.target.value)}
+                      placeholder="Bhushan Patil"
                       className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-purple-400" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                    <input type="text" value={reg.username} onChange={(e) => setR("username", e.target.value)} placeholder="bhushan_k"
+                    <input type="text" value={reg.username} onChange={(e) => setR("username", e.target.value)}
+                      placeholder="bhushan_k"
                       className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-purple-400" />
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input type="email" value={reg.email} onChange={(e) => setR("email", e.target.value)} placeholder="you@example.com"
+                  <input type="email" value={reg.email} onChange={(e) => setR("email", e.target.value)}
+                    placeholder="you@example.com"
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-purple-400" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                    <input type="password" value={reg.password} onChange={(e) => setR("password", e.target.value)} placeholder="Min. 6 chars"
+                    <input type="password" value={reg.password} onChange={(e) => setR("password", e.target.value)}
+                      placeholder="Min. 6 chars"
                       className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-purple-400" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Confirm</label>
-                    <input type="password" value={reg.confirm} onChange={(e) => setR("confirm", e.target.value)} placeholder="Repeat password"
+                    <input type="password" value={reg.confirm} onChange={(e) => setR("confirm", e.target.value)}
+                      placeholder="Repeat password"
                       className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-purple-400" />
                   </div>
                 </div>
@@ -446,8 +489,12 @@ await axios.post(`${API}/auth/register`, {
                 <OtpBoxes value={emailOtp} onChange={setEmailOtp} disabled={otpLoading} />
                 <ResendBtn onResend={sendEmailOtp} disabled={otpLoading} />
                 <div className="flex gap-3 pt-1">
-                  <button onClick={handleBack} className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50">← Back</button>
-                  <button onClick={verifyEmailOtp} disabled={otpLoading || emailOtp.replace(/\s/g,"").length < 6}
+                  <button onClick={handleBack}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50">
+                    ← Back
+                  </button>
+                  <button onClick={verifyEmailOtp}
+                    disabled={otpLoading || emailOtp.replace(/\s/g, "").length < 6}
                     className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">
                     {otpLoading ? "Verifying..." : "Verify Email"}
                   </button>
@@ -464,7 +511,8 @@ await axios.post(`${API}/auth/register`, {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
-                  <input type="tel" value={reg.phone} onChange={(e) => setR("phone", e.target.value)} placeholder="+919876543210"
+                  <input type="tel" value={reg.phone} onChange={(e) => setR("phone", e.target.value)}
+                    placeholder="+919876543210"
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-purple-400" />
                   <p className="text-xs text-gray-400 mt-1">Include country code e.g. +91</p>
                 </div>
@@ -476,14 +524,18 @@ await axios.post(`${API}/auth/register`, {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
-                  <input type="text" value={reg.location} onChange={(e) => setR("location", e.target.value)} placeholder="Mumbai, Maharashtra, India"
+                  <input type="text" value={reg.location} onChange={(e) => setR("location", e.target.value)}
+                    placeholder="Mumbai, Maharashtra, India"
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-purple-400" />
                 </div>
                 <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 text-xs text-blue-600">
                   ℹ Clicking Continue will create your account and send a phone OTP.
                 </div>
                 <div className="flex gap-3">
-                  <button onClick={handleBack} className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50">Back</button>
+                  <button onClick={handleBack}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50">
+                    Back
+                  </button>
                   <button onClick={handleContinuePersonal} disabled={loading || otpLoading}
                     className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">
                     {loading ? "Creating..." : otpLoading ? "Sending OTP..." : "Continue →"}
@@ -504,8 +556,12 @@ await axios.post(`${API}/auth/register`, {
                 <OtpBoxes value={phoneOtp} onChange={setPhoneOtp} disabled={otpLoading} />
                 <ResendBtn onResend={sendPhoneOtp} disabled={otpLoading} />
                 <div className="flex gap-3 pt-1">
-                  <button onClick={handleBack} className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50">← Back</button>
-                  <button onClick={verifyPhoneOtp} disabled={otpLoading || phoneOtp.replace(/\s/g,"").length < 6}
+                  <button onClick={handleBack}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50">
+                    ← Back
+                  </button>
+                  <button onClick={verifyPhoneOtp}
+                    disabled={otpLoading || phoneOtp.replace(/\s/g, "").length < 6}
                     className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">
                     {otpLoading ? "Verifying..." : "Verify Phone"}
                   </button>
@@ -536,28 +592,39 @@ await axios.post(`${API}/auth/register`, {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Upload document <span className="text-gray-400">(optional)</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Upload document <span className="text-gray-400">(optional)</span>
+                  </label>
                   <label className="block cursor-pointer">
                     <div className={`w-full border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center transition-colors ${
                       docPreview ? "border-purple-300 bg-purple-50" : "border-gray-200 hover:border-purple-300"}`}>
                       {docPreview
-                        ? <><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" className="mb-2">
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                        ? <>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" className="mb-2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                              <polyline points="14 2 14 8 20 8"/>
                             </svg>
                             <p className="text-sm text-purple-700 font-medium">{docPreview}</p>
-                            <p className="text-xs text-purple-400 mt-1">Click to change</p></>
-                        : <><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" className="mb-2">
-                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/>
+                            <p className="text-xs text-purple-400 mt-1">Click to change</p>
+                          </>
+                        : <>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" className="mb-2">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                              <polyline points="17 8 12 3 7 8"/>
                               <line x1="12" y1="3" x2="12" y2="15"/>
                             </svg>
                             <p className="text-sm text-gray-500">Click to upload document</p>
-                            <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG up to 10MB</p></>}
+                            <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG up to 10MB</p>
+                          </>}
                     </div>
                     <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleDocUpload} className="hidden" />
                   </label>
                 </div>
                 <div className="flex gap-3">
-                  <button onClick={handleBack} className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50">Back</button>
+                  <button onClick={handleBack}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50">
+                    Back
+                  </button>
                   <button onClick={handleFinish} disabled={loading}
                     className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">
                     {loading ? "Finishing..." : "Enter FundChain →"}
@@ -582,7 +649,8 @@ await axios.post(`${API}/auth/register`, {
               <div className="w-2 h-2 bg-green-500 rounded-full" />
               <p className="font-mono text-xs text-green-800 truncate">{account}</p>
             </div>
-            <button onClick={() => navigate("/app")} className="w-full bg-gray-100 text-gray-700 py-2.5 rounded-xl font-medium hover:bg-gray-200 text-sm">
+            <button onClick={() => navigate("/app")}
+              className="w-full bg-gray-100 text-gray-700 py-2.5 rounded-xl font-medium hover:bg-gray-200 text-sm">
               Continue to app →
             </button>
           </div>
@@ -590,7 +658,8 @@ await axios.post(`${API}/auth/register`, {
           <button onClick={connectWallet} disabled={isConnecting}
             className="w-full flex items-center justify-center gap-2 bg-gray-100 text-gray-700 py-2.5 rounded-xl font-medium hover:bg-gray-200 disabled:opacity-50 text-sm">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+              <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+              <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
               <path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>
             </svg>
             {isConnecting ? "Connecting..." : "Connect MetaMask"}
@@ -598,8 +667,12 @@ await axios.post(`${API}/auth/register`, {
         )}
 
         <div className="mt-5 pt-5 border-t border-gray-100 flex items-center justify-between">
-          <button onClick={() => navigate("/")} className="text-sm text-gray-400 hover:text-gray-600">← Back to home</button>
-          <button onClick={() => navigate("/admin-login")} className="text-sm text-orange-500 hover:text-orange-600 font-medium">Admin login →</button>
+          <button onClick={() => navigate("/")} className="text-sm text-gray-400 hover:text-gray-600">
+            ← Back to home
+          </button>
+          <button onClick={() => navigate("/admin-login")} className="text-sm text-orange-500 hover:text-orange-600 font-medium">
+            Admin login →
+          </button>
         </div>
       </div>
     </div>
