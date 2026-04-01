@@ -1,19 +1,39 @@
-import nodemailer from 'nodemailer'
+// ── Email Service — uses Brevo HTTP API (no SMTP, works on Render free tier) ──
+// Replaces nodemailer which fails on Render due to IPv6/SMTP blocking
 
-let transporter
-function getTransporter() {
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host:   process.env.SMTP_HOST   || 'smtp.gmail.com',
-      port:   Number(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    })
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email'
+
+async function send({ to, subject, html, toName = '' }) {
+  const fromEmail = process.env.EMAIL_FROM      || process.env.SMTP_USER || 'fundchain.04@gmail.com'
+  const fromName  = process.env.EMAIL_FROM_NAME || 'FundChain'
+  const apiKey    = process.env.BREVO_API_KEY
+
+  if (!apiKey) {
+    console.error('BREVO_API_KEY is not set — email not sent')
+    return
   }
-  return transporter
+
+  const payload = {
+    sender:      { name: fromName, email: fromEmail },
+    to:          [{ email: to, name: toName || to }],
+    subject,
+    htmlContent: html,
+  }
+
+  const res = await fetch(BREVO_API_URL, {
+    method:  'POST',
+    headers: {
+      'accept':       'application/json',
+      'content-type': 'application/json',
+      'api-key':      apiKey,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Brevo API error ${res.status}: ${err}`)
+  }
 }
 
 function htmlWrap(title, bodyHtml) {
@@ -43,16 +63,9 @@ function htmlWrap(title, bodyHtml) {
       <div class="container">
         <div class="header"><h1>${title}</h1></div>
         <div class="body">${bodyHtml}</div>
-        <div class="footer">CrowdFund Platform &nbsp;|&nbsp; This is an automated message, please do not reply.</div>
+        <div class="footer">FundChain &nbsp;|&nbsp; This is an automated message, please do not reply.</div>
       </div>
     </body></html>`
-}
-
-async function send({ to, subject, html }) {
-  await getTransporter().sendMail({
-    from: `"CrowdFund Platform" <${process.env.SMTP_USER}>`,
-    to, subject, html,
-  })
 }
 
 // ── OTP emails (used by verificationController) ───────────────────────────────
@@ -63,7 +76,7 @@ export async function sendEmailOtp(email, otp, name = 'there') {
     <h2 style="letter-spacing:8px;color:#4f46e5;font-size:36px;">${otp}</h2>
     <p>This OTP expires in <strong>5 minutes</strong>. Do not share it with anyone.</p>
   `)
-  await send({ to: email, subject: 'Your CrowdFund Email Verification OTP', html })
+  await send({ to: email, toName: name, subject: 'Your FundChain Email Verification OTP', html })
 }
 
 // ── Admin: new campaign pending ───────────────────────────────────────────────
@@ -86,7 +99,7 @@ export async function sendAdminCampaignNotification({ adminEmail, campaign, crea
     <a class="btn" href="${process.env.ADMIN_PANEL_URL || 'http://localhost:5173/admin'}">Go to Admin Panel</a>
   `)
   await send({
-    to: adminEmail,
+    to:      adminEmail,
     subject: `[Action Required] New Campaign Pending — "${campaign.title}"`,
     html,
   })
@@ -108,7 +121,8 @@ export async function sendCampaignApprovedEmail({ userEmail, userName, campaign 
     </a>
   `)
   await send({
-    to: userEmail,
+    to:      userEmail,
+    toName:  userName,
     subject: `🎉 Your Campaign "${campaign.title}" has been Approved!`,
     html,
   })
@@ -128,7 +142,8 @@ export async function sendCampaignRejectedEmail({ userEmail, userName, campaign,
     <a class="btn" href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard">Go to Dashboard</a>
   `)
   await send({
-    to: userEmail,
+    to:      userEmail,
+    toName:  userName,
     subject: `Update on Your Campaign "${campaign.title}" — Action Required`,
     html,
   })
