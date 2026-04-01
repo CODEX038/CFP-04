@@ -1,12 +1,16 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import OtpInput from "../../components/OtpInput";
 import ResendButton from "../../components/ResendButton";
+import { useAuth } from "../../context/AuthContext";
 import "./Verification.css";
 
 const API = import.meta.env.VITE_API_URL;
 
 export default function PhoneVerification() {
+  const { user } = useAuth();
+  const navigate  = useNavigate();
+
   const [step, setStep]       = useState("enterPhone");
   const [phone, setPhone]     = useState("");
   const [otp, setOtp]         = useState("");
@@ -14,9 +18,21 @@ export default function PhoneVerification() {
   const [error, setError]     = useState("");
   const [success, setSuccess] = useState("");
 
+  // ── If already verified, go straight to app ──────────────────────────────
+  useEffect(() => {
+    if (user?.phoneVerified) {
+      navigate("/app", { replace: true });
+    }
+  }, [user, navigate])
+
   function clearMessages() {
     setError("");
     setSuccess("");
+  }
+
+  // ── Use admin_token (not token) — consistent with AuthContext ─────────────
+  function getToken() {
+    return localStorage.getItem("admin_token") || localStorage.getItem("token");
   }
 
   async function handleSendOtp(e) {
@@ -26,7 +42,7 @@ export default function PhoneVerification() {
 
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       const res   = await fetch(`${API}/verification/send-phone-otp`, {
         method:  "POST",
         headers: {
@@ -53,7 +69,7 @@ export default function PhoneVerification() {
 
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       const res   = await fetch(`${API}/verification/verify-phone-otp`, {
         method:  "POST",
         headers: {
@@ -75,7 +91,7 @@ export default function PhoneVerification() {
 
   async function handleResend() {
     clearMessages();
-    const token = localStorage.getItem("token");
+    const token = getToken();
     const res   = await fetch(`${API}/verification/send-phone-otp`, {
       method:  "POST",
       headers: {
@@ -110,8 +126,8 @@ export default function PhoneVerification() {
               key={s}
               className={[
                 "verify-dot",
-                step === s                        ? "verify-dot--active" : "",
-                steps.indexOf(step) > i           ? "verify-dot--done"   : "",
+                step === s                  ? "verify-dot--active" : "",
+                steps.indexOf(step) > i     ? "verify-dot--done"   : "",
               ].join(" ")}
             />
           ))}
