@@ -32,7 +32,8 @@ export default function DonationPanel({ campaign, contract, onSuccess }) {
 
     setLoading(true); clear()
     try {
-      const tx = await contract.fund({ value: ethers.parseEther(ethAmount) })
+      // ✅ Fixed: was contract.fund() — smart contract function is named donate()
+      const tx = await contract.donate({ value: ethers.parseEther(ethAmount) })
       await tx.wait()
       setSuccess(`✓ Successfully donated ${ethAmount} ETH! Thank you.`)
       setEthAmount('')
