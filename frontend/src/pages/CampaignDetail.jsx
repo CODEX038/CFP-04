@@ -120,14 +120,12 @@ const CampaignDetail = () => {
 
   const { campaign, loading, error, refetch } = useCampaign(contractAddress)
 
-  // ── FIX: destructure `donate` from the hook ───────────────────────────────
-  // Previously only `contract` was destructured and passed to DonationPanel.
-  // DonationPanel was then calling contract.donate({ value: parseEther(obj) })
-  // directly — bypassing the hook's sanitiser → [object Object] crash.
-  // Now we pass the safe `donate(amountStr)` wrapper instead.
+  // donate is the safe wrapper from useCampaignContract that sanitises
+  // the ETH amount string before passing it to ethers.parseEther —
+  // this prevents the [object Object] INVALID_ARGUMENT crash.
   const {
-    contract,                        // still needed for refund/withdraw checks
-    donate,                          // ✅ NEW — safe wrapper with getCleanEth()
+    contract,
+    donate,
     refund: contractRefund,
     claimFunds,
   } = useCampaignContract(
@@ -189,8 +187,10 @@ const CampaignDetail = () => {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
 
-      <button onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-gray-500 hover:text-gray-800 text-sm mb-6">
+      <button
+        onClick={() => navigate(-1)}
+        className="flex items-center gap-2 text-gray-500 hover:text-gray-800 text-sm mb-6"
+      >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M19 12H5M12 19l-7-7 7-7"/>
         </svg>
@@ -260,16 +260,20 @@ const CampaignDetail = () => {
           {isETH && (
             <div className="flex gap-3 mt-4">
               {isExpired && !isGoalMet && isVerified && (
-                <button onClick={handleRefund}
+                <button
+                  onClick={handleRefund}
                   disabled={txStatus === 'pending' || !contractRefund}
-                  className="px-5 py-2.5 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                  className="px-5 py-2.5 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   {txStatus === 'pending' ? 'Processing...' : 'Claim Refund'}
                 </button>
               )}
               {isGoalMet && !campaign.claimed && isOwner && (
-                <button onClick={handleWithdraw}
+                <button
+                  onClick={handleWithdraw}
                   disabled={txStatus === 'pending' || !claimFunds}
-                  className="px-5 py-2.5 rounded-xl text-sm font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                  className="px-5 py-2.5 rounded-xl text-sm font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   {txStatus === 'pending' ? 'Processing...' : 'Withdraw Funds'}
                 </button>
               )}
@@ -283,7 +287,7 @@ const CampaignDetail = () => {
             isETH ? (
               <DonationPanel
                 campaign={campaign}
-                donate={donate}        {/* ✅ FIX: was contract={contract} */}
+                donate={donate}
                 onSuccess={refetch}
               />
             ) : (
