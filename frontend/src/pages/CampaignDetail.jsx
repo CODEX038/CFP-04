@@ -6,7 +6,6 @@ import { useCampaignContract } from '../hooks/useContract'
 import DonationPanel from '../components/DonationPanel'
 import UpiDonationPanel from '../components/UpiDonationPanel'
 
-// ── Verification status banner ────────────────────────────────────────────────
 const VerificationBanner = ({ status }) => {
   if (status === 'verified') return null
 
@@ -41,21 +40,21 @@ const VerificationBanner = ({ status }) => {
   )
 }
 
-// ── Progress bar ──────────────────────────────────────────────────────────────
 const GoalProgress = ({ campaign }) => {
+  const isETH  = campaign.paymentType === 'eth' || !campaign.paymentType
   const isFiat = campaign.paymentType === 'fiat'
 
   const raised = isFiat
     ? (campaign.raised || 0)
     : parseFloat(campaign.amountRaised || 0)
 
-  const goal = parseFloat(campaign.goal || 0)
-  const pct  = goal > 0 ? Math.min((raised / goal) * 100, 100) : 0
+  const goal   = parseFloat(campaign.goal || 0)
+  const pct    = goal > 0 ? Math.min((raised / goal) * 100, 100) : 0
 
-  const formatValue = (val) =>
-    isFiat
-      ? `₹${Number(val).toLocaleString('en-IN')}`
-      : `${parseFloat(val).toFixed(4)} ETH`
+  const formatValue = (val) => {
+    if (isFiat) return `₹${Number(val).toLocaleString('en-IN')}`
+    return `${parseFloat(val).toFixed(4)} ETH`
+  }
 
   return (
     <div className="mb-6">
@@ -65,6 +64,7 @@ const GoalProgress = ({ campaign }) => {
           style={{ width: `${pct}%` }}
         />
       </div>
+
       <div className="flex items-center justify-between text-sm">
         <div>
           <span className={`font-semibold ${isFiat ? 'text-blue-600' : 'text-purple-600'}`}>
@@ -78,17 +78,15 @@ const GoalProgress = ({ campaign }) => {
           <span className="text-gray-400 ml-1">goal</span>
         </div>
       </div>
+
       <div className="flex items-center justify-between mt-1 text-xs text-gray-400">
         <span>{pct.toFixed(1)}% funded</span>
-        {campaign.funders > 0 && (
-          <span>{campaign.funders} donor{campaign.funders !== 1 ? 's' : ''}</span>
-        )}
+        {campaign.funders > 0 && <span>{campaign.funders} donor{campaign.funders !== 1 ? 's' : ''}</span>}
       </div>
     </div>
   )
 }
 
-// ── Payment type badge ────────────────────────────────────────────────────────
 const PaymentTypeBadge = ({ paymentType }) => {
   const isETH = paymentType === 'eth' || !paymentType
 
@@ -112,33 +110,27 @@ const PaymentTypeBadge = ({ paymentType }) => {
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
 const CampaignDetail = () => {
   const { id: contractAddress } = useParams()
   const navigate                = useNavigate()
   const { account }             = useWallet()
 
   const { campaign, loading, error, refetch } = useCampaign(contractAddress)
-
-  // donate is the safe wrapper from useCampaignContract that sanitises
-  // the ETH amount string before passing it to ethers.parseEther —
-  // this prevents the [object Object] INVALID_ARGUMENT crash.
-  const {
-    contract,
-    donate,
-    refund: contractRefund,
-    claimFunds,
-  } = useCampaignContract(
+  const { donate, refund, claimFunds } = useCampaignContract(
     campaign?.paymentType === 'eth' ? contractAddress : null
   )
 
   const [txStatus, setTxStatus] = useState(null)
 
   const handleRefund = async () => {
-    if (!contractRefund) { alert('Refund not available for this campaign type'); return }
+    if (!refund) {
+      alert('Refund not available')
+      return
+    }
+
     setTxStatus('pending')
     try {
-      await contractRefund()
+      await refund()
       setTxStatus('refunded')
       await refetch()
       setTimeout(() => setTxStatus(null), 4000)
@@ -150,7 +142,11 @@ const CampaignDetail = () => {
   }
 
   const handleWithdraw = async () => {
-    if (!claimFunds) { alert('Withdraw not available for this campaign type'); return }
+    if (!claimFunds) {
+      alert('Withdraw not available')
+      return
+    }
+
     setTxStatus('pending')
     try {
       await claimFunds()
@@ -187,17 +183,14 @@ const CampaignDetail = () => {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
 
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-gray-500 hover:text-gray-800 text-sm mb-6"
-      >
+      <button onClick={() => navigate(-1)}
+        className="flex items-center gap-2 text-gray-500 hover:text-gray-800 text-sm mb-6">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M19 12H5M12 19l-7-7 7-7"/>
         </svg>
         Back to campaigns
       </button>
 
-      {/* Tx status banner */}
       {txStatus && (
         <div className={`mb-6 px-4 py-3 rounded-xl text-sm font-medium ${
           txStatus === 'pending'   ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
@@ -212,12 +205,10 @@ const CampaignDetail = () => {
         </div>
       )}
 
-      {/* Verification banner */}
       <VerificationBanner status={campaign.verificationStatus} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-        {/* Left: image + info */}
         <div className="lg:col-span-2">
           <div className="w-full h-64 bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl mb-6 flex items-center justify-center overflow-hidden">
             {campaign.imageHash ? (
@@ -231,11 +222,11 @@ const CampaignDetail = () => {
             )}
           </div>
 
-          {/* Title + badges */}
           <div className="flex items-start gap-3 mb-3 flex-wrap">
             <h1 className="text-2xl font-bold text-gray-900 flex-1">{campaign.title}</h1>
             <div className="flex items-center gap-2 shrink-0">
               <PaymentTypeBadge paymentType={campaign.paymentType} />
+
               {isVerified && (
                 <span className="text-xs bg-green-100 text-green-700 border border-green-200 px-2 py-1 rounded-full flex items-center gap-1">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
@@ -256,24 +247,18 @@ const CampaignDetail = () => {
 
           <GoalProgress campaign={campaign} />
 
-          {/* ETH action buttons */}
           {isETH && (
             <div className="flex gap-3 mt-4">
               {isExpired && !isGoalMet && isVerified && (
-                <button
-                  onClick={handleRefund}
-                  disabled={txStatus === 'pending' || !contractRefund}
-                  className="px-5 py-2.5 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <button onClick={handleRefund} disabled={txStatus === 'pending' || !refund}
+                  className="px-5 py-2.5 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
                   {txStatus === 'pending' ? 'Processing...' : 'Claim Refund'}
                 </button>
               )}
+
               {isGoalMet && !campaign.claimed && isOwner && (
-                <button
-                  onClick={handleWithdraw}
-                  disabled={txStatus === 'pending' || !claimFunds}
-                  className="px-5 py-2.5 rounded-xl text-sm font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <button onClick={handleWithdraw} disabled={txStatus === 'pending' || !claimFunds}
+                  className="px-5 py-2.5 rounded-xl text-sm font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
                   {txStatus === 'pending' ? 'Processing...' : 'Withdraw Funds'}
                 </button>
               )}
@@ -281,7 +266,6 @@ const CampaignDetail = () => {
           )}
         </div>
 
-        {/* Right: donation panel */}
         <div className="lg:col-span-1">
           {isVerified ? (
             isETH ? (
