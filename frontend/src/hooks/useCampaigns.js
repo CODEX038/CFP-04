@@ -4,7 +4,9 @@ import { useWallet } from '../context/WalletContext'
 import { CONTRACT_ADDRESS, FACTORY_ABI, CAMPAIGN_ABI } from '../utils/constants'
 import axios from 'axios'
 
-// ── Helper: is this a real on-chain address? ──────────────────────────────────
+// FIX: single source of truth for API base — always includes /api
+const API = `${import.meta.env.VITE_API_URL}/api`
+
 const isOnChain = (c) =>
   c.paymentType !== 'fiat' && ethers.isAddress(c.contractAddress)
 
@@ -18,11 +20,8 @@ export const useCampaigns = () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/campaigns`
-      )
+      const response = await axios.get(`${API}/campaigns`)  // ✅ was missing /api
 
-      // Handle both response shapes: plain array or wrapped { data: [...] }
       const data = Array.isArray(response.data)
         ? response.data
         : response.data.data || []
@@ -31,25 +30,19 @@ export const useCampaigns = () => {
         const enriched = await Promise.all(
           data.map(async (c) => {
 
-            // ── Fiat campaign: re-fetch fresh stats from backend ──────────────
-            // The list endpoint may return stale amountRaised. Always pull the
-            // individual campaign record so we get the Stripe-updated value.
             if (!isOnChain(c)) {
               try {
-                const id = c._id || c.contractAddress || c.id
-                const detail = await axios.get(
-                  `${import.meta.env.VITE_API_URL}/campaigns/${id}`
-                )
-                const fresh = detail.data.data || detail.data
+                const id     = c._id || c.contractAddress || c.id
+                const detail = await axios.get(`${API}/campaigns/${id}`)  // ✅ fixed
+                const fresh  = detail.data.data || detail.data
                 return {
                   ...c,
                   ...fresh,
-                  amountRaised : fresh.amountRaised  ?? c.amountRaised  ?? 0,
-                  funders      : fresh.funders       ?? c.funders       ?? 0,
-                  deadline     : (fresh.deadline     ?? c.deadline) * 1000,
+                  amountRaised : fresh.amountRaised ?? c.amountRaised ?? 0,
+                  funders      : fresh.funders      ?? c.funders      ?? 0,
+                  deadline     : (fresh.deadline    ?? c.deadline) * 1000,
                 }
               } catch {
-                // Fallback to list data if detail fetch fails
                 return {
                   ...c,
                   amountRaised : c.amountRaised ?? 0,
@@ -59,12 +52,10 @@ export const useCampaigns = () => {
               }
             }
 
-            // ── ETH campaign: no provider yet, use DB values ──────────────────
             if (!provider) {
               return { ...c, deadline: c.deadline * 1000 }
             }
 
-            // ── ETH campaign: sync live on-chain state ────────────────────────
             try {
               const contract = new ethers.Contract(
                 c.contractAddress, CAMPAIGN_ABI, provider
@@ -89,7 +80,6 @@ export const useCampaigns = () => {
         setCampaigns(enriched)
 
       } else if (provider && CONTRACT_ADDRESS) {
-        // Fallback: fetch ETH campaigns directly from factory contract
         const factory  = new ethers.Contract(CONTRACT_ADDRESS, FACTORY_ABI, provider)
         const raw      = await factory.getCampaigns()
         const enriched = await Promise.all(
@@ -158,12 +148,8 @@ export const useCampaign = (contractAddress) => {
     setLoading(true)
     setError(null)
     try {
-      // Always fetch from backend first — it has paymentType
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/campaigns/${contractAddress}`
-      )
+      const response = await axios.get(`${API}/campaigns/${contractAddress}`)  // ✅ fixed
 
-      // Handle both response shapes
       const data = response.data.data || response.data
 
       if (!data) {
@@ -171,7 +157,6 @@ export const useCampaign = (contractAddress) => {
         return
       }
 
-      // ── Fiat campaign: no contract call needed ────────────────────────────
       if (!isOnChain(data)) {
         setCampaign({
           ...data,
@@ -182,7 +167,6 @@ export const useCampaign = (contractAddress) => {
         return
       }
 
-      // ── ETH campaign: validate address then sync on-chain ─────────────────
       if (!ethers.isAddress(data.contractAddress)) {
         setError(`Invalid contract address: "${data.contractAddress}"`)
         return
@@ -209,7 +193,6 @@ export const useCampaign = (contractAddress) => {
         }
       }
 
-      // Provider unavailable — use DB data only
       setCampaign({
         ...data,
         amountRaised : data.amountRaised ?? 0,

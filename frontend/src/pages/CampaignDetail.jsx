@@ -41,22 +41,21 @@ const VerificationBanner = ({ status }) => {
   )
 }
 
-// ── Progress bar — renders correctly for ETH and fiat campaigns ───────────────
+// ── Progress bar ──────────────────────────────────────────────────────────────
 const GoalProgress = ({ campaign }) => {
-  const isETH  = campaign.paymentType === 'eth' || !campaign.paymentType
   const isFiat = campaign.paymentType === 'fiat'
 
   const raised = isFiat
     ? (campaign.raised || 0)
     : parseFloat(campaign.amountRaised || 0)
 
-  const goal   = parseFloat(campaign.goal || 0)
-  const pct    = goal > 0 ? Math.min((raised / goal) * 100, 100) : 0
+  const goal = parseFloat(campaign.goal || 0)
+  const pct  = goal > 0 ? Math.min((raised / goal) * 100, 100) : 0
 
-  const formatValue = (val) => {
-    if (isFiat) return `₹${Number(val).toLocaleString('en-IN')}`
-    return `${parseFloat(val).toFixed(4)} ETH`
-  }
+  const formatValue = (val) =>
+    isFiat
+      ? `₹${Number(val).toLocaleString('en-IN')}`
+      : `${parseFloat(val).toFixed(4)} ETH`
 
   return (
     <div className="mb-6">
@@ -66,7 +65,6 @@ const GoalProgress = ({ campaign }) => {
           style={{ width: `${pct}%` }}
         />
       </div>
-
       <div className="flex items-center justify-between text-sm">
         <div>
           <span className={`font-semibold ${isFiat ? 'text-blue-600' : 'text-purple-600'}`}>
@@ -80,10 +78,11 @@ const GoalProgress = ({ campaign }) => {
           <span className="text-gray-400 ml-1">goal</span>
         </div>
       </div>
-
       <div className="flex items-center justify-between mt-1 text-xs text-gray-400">
         <span>{pct.toFixed(1)}% funded</span>
-        {campaign.funders > 0 && <span>{campaign.funders} donor{campaign.funders !== 1 ? 's' : ''}</span>}
+        {campaign.funders > 0 && (
+          <span>{campaign.funders} donor{campaign.funders !== 1 ? 's' : ''}</span>
+        )}
       </div>
     </div>
   )
@@ -113,24 +112,32 @@ const PaymentTypeBadge = ({ paymentType }) => {
   )
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
 const CampaignDetail = () => {
   const { id: contractAddress } = useParams()
   const navigate                = useNavigate()
   const { account }             = useWallet()
 
   const { campaign, loading, error, refetch } = useCampaign(contractAddress)
-  const { contract, refund: contractRefund, claimFunds } = useCampaignContract(
+
+  // ── FIX: destructure `donate` from the hook ───────────────────────────────
+  // Previously only `contract` was destructured and passed to DonationPanel.
+  // DonationPanel was then calling contract.donate({ value: parseEther(obj) })
+  // directly — bypassing the hook's sanitiser → [object Object] crash.
+  // Now we pass the safe `donate(amountStr)` wrapper instead.
+  const {
+    contract,                        // still needed for refund/withdraw checks
+    donate,                          // ✅ NEW — safe wrapper with getCleanEth()
+    refund: contractRefund,
+    claimFunds,
+  } = useCampaignContract(
     campaign?.paymentType === 'eth' ? contractAddress : null
   )
 
   const [txStatus, setTxStatus] = useState(null)
 
   const handleRefund = async () => {
-    if (!contractRefund) {
-      alert('Refund not available for this campaign type')
-      return
-    }
-
+    if (!contractRefund) { alert('Refund not available for this campaign type'); return }
     setTxStatus('pending')
     try {
       await contractRefund()
@@ -145,11 +152,7 @@ const CampaignDetail = () => {
   }
 
   const handleWithdraw = async () => {
-    if (!claimFunds) {
-      alert('Withdraw not available for this campaign type')
-      return
-    }
-
+    if (!claimFunds) { alert('Withdraw not available for this campaign type'); return }
     setTxStatus('pending')
     try {
       await claimFunds()
@@ -233,7 +236,6 @@ const CampaignDetail = () => {
             <h1 className="text-2xl font-bold text-gray-900 flex-1">{campaign.title}</h1>
             <div className="flex items-center gap-2 shrink-0">
               <PaymentTypeBadge paymentType={campaign.paymentType} />
-
               {isVerified && (
                 <span className="text-xs bg-green-100 text-green-700 border border-green-200 px-2 py-1 rounded-full flex items-center gap-1">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
@@ -252,23 +254,21 @@ const CampaignDetail = () => {
 
           <p className="text-gray-600 leading-relaxed mb-6">{campaign.description}</p>
 
-          {/* Goal progress bar */}
           <GoalProgress campaign={campaign} />
 
-          {/* Action buttons for ETH campaigns */}
+          {/* ETH action buttons */}
           {isETH && (
             <div className="flex gap-3 mt-4">
-              {/* Refund — ETH only, after deadline, goal not met */}
               {isExpired && !isGoalMet && isVerified && (
-                <button onClick={handleRefund} disabled={txStatus === 'pending' || !contractRefund}
+                <button onClick={handleRefund}
+                  disabled={txStatus === 'pending' || !contractRefund}
                   className="px-5 py-2.5 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
                   {txStatus === 'pending' ? 'Processing...' : 'Claim Refund'}
                 </button>
               )}
-
-              {/* Withdraw — ETH only, owner, goal met */}
               {isGoalMet && !campaign.claimed && isOwner && (
-                <button onClick={handleWithdraw} disabled={txStatus === 'pending' || !claimFunds}
+                <button onClick={handleWithdraw}
+                  disabled={txStatus === 'pending' || !claimFunds}
                   className="px-5 py-2.5 rounded-xl text-sm font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
                   {txStatus === 'pending' ? 'Processing...' : 'Withdraw Funds'}
                 </button>
@@ -283,7 +283,7 @@ const CampaignDetail = () => {
             isETH ? (
               <DonationPanel
                 campaign={campaign}
-                contract={contract}
+                donate={donate}        {/* ✅ FIX: was contract={contract} */}
                 onSuccess={refetch}
               />
             ) : (

@@ -3,9 +3,8 @@ import { ethers } from 'ethers'
 import { useWallet } from '../context/WalletContext'
 import { CAMPAIGN_ABI, FACTORY_ABI, CONTRACT_ADDRESS } from '../utils/constants'
 
-// ── Factory Contract Hook ─────────────────────────────────────────────────────
 export const useFactoryContract = () => {
-  const { provider, signer } = useWallet()
+  const { signer } = useWallet()
   const [contract, setContract] = useState(null)
 
   useEffect(() => {
@@ -13,12 +12,10 @@ export const useFactoryContract = () => {
       setContract(null)
       return
     }
-
     try {
-      const factoryContract = new ethers.Contract(CONTRACT_ADDRESS, FACTORY_ABI, signer)
-      setContract(factoryContract)
-    } catch (error) {
-      console.error('Error creating factory contract:', error)
+      setContract(new ethers.Contract(CONTRACT_ADDRESS, FACTORY_ABI, signer))
+    } catch (err) {
+      console.error('Factory contract error:', err)
       setContract(null)
     }
   }, [signer])
@@ -26,39 +23,43 @@ export const useFactoryContract = () => {
   return contract
 }
 
-// ── Campaign Contract Hook ────────────────────────────────────────────────────
 export const useCampaignContract = (address) => {
-  const { provider, signer } = useWallet()
+  const { signer } = useWallet()
   const [contract, setContract] = useState(null)
 
   useEffect(() => {
-    // Guard: invalid or fiat campaign address
-    if (!address || !ethers.isAddress(address)) {
+    if (!address || !ethers.isAddress(address) || !signer) {
       setContract(null)
       return
     }
-
-    if (!signer) {
-      setContract(null)
-      return
-    }
-
     try {
-      const campaignContract = new ethers.Contract(address, CAMPAIGN_ABI, signer)
-      setContract(campaignContract)
-    } catch (error) {
-      console.error('Error creating campaign contract:', error)
+      setContract(new ethers.Contract(address, CAMPAIGN_ABI, signer))
+    } catch (err) {
+      console.error('Campaign contract error:', err)
       setContract(null)
     }
   }, [address, signer])
 
-  // ── Contract Methods ────────────────────────────────────────────────────────
+  // ── FIX: sanitise amount before EVER touching ethers.parseEther ─────────
+  const getCleanEth = (raw) => {
+    if (raw === null || raw === undefined)
+      throw new Error('ETH amount is required')
+    if (typeof raw === 'object')
+      throw new Error('Invalid ETH amount — received object instead of string')
+    const str = String(raw).trim()
+    if (!str || str === '0')
+      throw new Error('ETH amount must be greater than 0')
+    const num = parseFloat(str)
+    if (isNaN(num) || num <= 0)
+      throw new Error(`Invalid ETH amount: "${str}"`)
+    return str
+  }
 
   const donate = async (amountInEth) => {
     if (!contract) throw new Error('Contract not initialized')
-    const tx = await contract.donate({
-      value: ethers.parseEther(amountInEth.toString()),
-    })
+    const clean    = getCleanEth(amountInEth)       // ✅ always a plain string
+    const weiValue = ethers.parseEther(clean)        // ✅ never sees an object
+    const tx = await contract.donate({ value: weiValue })
     await tx.wait()
     return tx
   }
@@ -93,7 +94,6 @@ export const useCampaignContract = (address) => {
 
   const getCampaignDetails = async () => {
     if (!contract) throw new Error('Contract not initialized')
-    
     const [owner, goal, amountRaised, deadline, claimed, paused] = await Promise.all([
       contract.owner(),
       contract.goal(),
@@ -102,24 +102,15 @@ export const useCampaignContract = (address) => {
       contract.claimed(),
       contract.paused(),
     ])
-
     return {
       owner,
-      goal: ethers.formatEther(goal),
-      amountRaised: ethers.formatEther(amountRaised),
-      deadline: Number(deadline),
+      goal         : ethers.formatEther(goal),
+      amountRaised : ethers.formatEther(amountRaised),
+      deadline     : Number(deadline),
       claimed,
       paused,
     }
   }
 
-  return {
-    contract,
-    donate,
-    pauseCampaign,
-    resumeCampaign,
-    claimFunds,
-    refund,
-    getCampaignDetails,
-  }
+  return { contract, donate, pauseCampaign, resumeCampaign, claimFunds, refund, getCampaignDetails }
 }
