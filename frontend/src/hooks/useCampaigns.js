@@ -5,7 +5,7 @@ import { CONTRACT_ADDRESS, FACTORY_ABI, CAMPAIGN_ABI } from '../utils/constants'
 import axios from 'axios'
 
 // FIX: single source of truth for API base — always includes /api
-const API = `${import.meta.env.VITE_API_URL}/api`
+const API = import.meta.env.VITE_API_URL
 
 const isOnChain = (c) =>
   c.paymentType !== 'fiat' && ethers.isAddress(c.contractAddress)
