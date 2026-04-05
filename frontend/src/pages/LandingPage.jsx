@@ -71,8 +71,6 @@ const LandingPage = () => {
       {/* ── Navbar ──────────────────────────────────────────────────────────── */}
       <nav className="sticky top-0 z-50 bg-white border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-
-          {/* Logo */}
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
             <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">CF</span>
@@ -80,32 +78,25 @@ const LandingPage = () => {
             <span className="font-semibold text-gray-900 text-lg">FundChain</span>
           </div>
 
-          {/* Desktop nav */}
           <div className="hidden sm:flex items-center gap-1">
             <button onClick={() => navigate('/app')}
               className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 font-medium rounded-lg hover:bg-gray-50">
               Browse campaigns
             </button>
-
-            {/* USER LOGIN — clearly visible */}
             <button onClick={() => navigate('/login')}
               className="px-4 py-2 text-sm text-purple-700 font-semibold border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors">
               Sign in
             </button>
-
-            {/* ADMIN LOGIN */}
             <button onClick={() => navigate('/admin-login')}
               className="px-4 py-2 text-sm text-gray-600 font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
               Admin login
             </button>
-
             <button onClick={() => navigate('/login')}
               className="px-4 py-2 text-sm text-white bg-purple-600 rounded-lg font-medium hover:bg-purple-700 transition-colors">
               Get started
             </button>
           </div>
 
-          {/* Mobile */}
           <div className="sm:hidden flex items-center gap-2">
             <button onClick={() => navigate('/login')}
               className="px-3 py-2 text-sm text-purple-700 border border-purple-200 rounded-lg font-semibold">
@@ -120,7 +111,6 @@ const LandingPage = () => {
               App
             </button>
           </div>
-
         </div>
       </nav>
 
@@ -149,28 +139,6 @@ const LandingPage = () => {
           <button onClick={() => navigate('/app')}
             className="px-8 py-3.5 bg-gray-100 text-gray-700 rounded-xl font-medium text-base hover:bg-gray-200 transition-colors">
             Browse campaigns
-          </button>
-        </div>
-
-        {/* ── Quick access cards ────────────────────────────────────────────── */}
-        <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
-          <button onClick={() => navigate('/login')}
-            className="flex flex-col items-center gap-2 bg-purple-50 border border-purple-200 rounded-2xl p-5 hover:bg-purple-100 transition-colors">
-            <span className="text-2xl">👤</span>
-            <span className="text-sm font-semibold text-purple-700">User login</span>
-            <span className="text-xs text-purple-400">Sign in or create account</span>
-          </button>
-          <button onClick={() => navigate('/app')}
-            className="flex flex-col items-center gap-2 bg-gray-50 border border-gray-200 rounded-2xl p-5 hover:bg-gray-100 transition-colors">
-            <span className="text-2xl">🔍</span>
-            <span className="text-sm font-semibold text-gray-700">Browse</span>
-            <span className="text-xs text-gray-400">Explore campaigns</span>
-          </button>
-          <button onClick={() => navigate('/admin-login')}
-            className="flex flex-col items-center gap-2 bg-orange-50 border border-orange-200 rounded-2xl p-5 hover:bg-orange-100 transition-colors">
-            <span className="text-2xl">🛡️</span>
-            <span className="text-sm font-semibold text-orange-700">Admin login</span>
-            <span className="text-xs text-orange-400">Admin panel access</span>
           </button>
         </div>
 
