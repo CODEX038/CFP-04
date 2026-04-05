@@ -116,18 +116,14 @@ const CampaignDetail = () => {
   const { account }             = useWallet()
 
   const { campaign, loading, error, refetch } = useCampaign(contractAddress)
-  const { donate, refund, claimFunds } = useCampaignContract(
-    campaign?.paymentType === 'eth' ? contractAddress : null
-  )
+
+  // ✅ FIX: always pass contractAddress — hook handles invalid/fiat addresses internally
+  const { donate, refund, claimFunds } = useCampaignContract(contractAddress)
 
   const [txStatus, setTxStatus] = useState(null)
 
   const handleRefund = async () => {
-    if (!refund) {
-      alert('Refund not available')
-      return
-    }
-
+    if (!refund) { alert('Refund not available'); return }
     setTxStatus('pending')
     try {
       await refund()
@@ -142,11 +138,7 @@ const CampaignDetail = () => {
   }
 
   const handleWithdraw = async () => {
-    if (!claimFunds) {
-      alert('Withdraw not available')
-      return
-    }
-
+    if (!claimFunds) { alert('Withdraw not available'); return }
     setTxStatus('pending')
     try {
       await claimFunds()
@@ -226,7 +218,6 @@ const CampaignDetail = () => {
             <h1 className="text-2xl font-bold text-gray-900 flex-1">{campaign.title}</h1>
             <div className="flex items-center gap-2 shrink-0">
               <PaymentTypeBadge paymentType={campaign.paymentType} />
-
               {isVerified && (
                 <span className="text-xs bg-green-100 text-green-700 border border-green-200 px-2 py-1 rounded-full flex items-center gap-1">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
@@ -255,7 +246,6 @@ const CampaignDetail = () => {
                   {txStatus === 'pending' ? 'Processing...' : 'Claim Refund'}
                 </button>
               )}
-
               {isGoalMet && !campaign.claimed && isOwner && (
                 <button onClick={handleWithdraw} disabled={txStatus === 'pending' || !claimFunds}
                   className="px-5 py-2.5 rounded-xl text-sm font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
