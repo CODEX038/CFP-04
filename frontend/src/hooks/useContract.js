@@ -40,7 +40,6 @@ export const useCampaignContract = (address) => {
     }
   }, [address, signer])
 
-  // ── FIX: sanitise amount before EVER touching ethers.parseEther ─────────
   const getCleanEth = (raw) => {
     if (raw === null || raw === undefined)
       throw new Error('ETH amount is required')
@@ -55,32 +54,35 @@ export const useCampaignContract = (address) => {
     return str
   }
 
+  // ✅ Calls contract.fund() — matching your Solidity function name
   const donate = async (amountInEth) => {
-    if (!contract) throw new Error('Contract not initialized')
-    const clean    = getCleanEth(amountInEth)       // ✅ always a plain string
-    const weiValue = ethers.parseEther(clean)        // ✅ never sees an object
-    const tx = await contract.donate({ value: weiValue })
+    if (!contract) throw new Error('Contract not initialized — connect your wallet')
+    const clean    = getCleanEth(amountInEth)
+    const weiValue = ethers.parseEther(clean)
+    const tx = await contract.fund({ value: weiValue })
     await tx.wait()
     return tx
   }
 
+  // ✅ Matches Solidity: setPaused(bool)
   const pauseCampaign = async () => {
     if (!contract) throw new Error('Contract not initialized')
-    const tx = await contract.pause()
+    const tx = await contract.setPaused(true)
     await tx.wait()
     return tx
   }
 
   const resumeCampaign = async () => {
     if (!contract) throw new Error('Contract not initialized')
-    const tx = await contract.resume()
+    const tx = await contract.setPaused(false)
     await tx.wait()
     return tx
   }
 
+  // ✅ Matches Solidity: withdraw()
   const claimFunds = async () => {
     if (!contract) throw new Error('Contract not initialized')
-    const tx = await contract.claim()
+    const tx = await contract.withdraw()
     await tx.wait()
     return tx
   }
