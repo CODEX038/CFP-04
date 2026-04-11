@@ -2,6 +2,9 @@
  * contractListener.js
  * Listens to Sepolia blockchain events and syncs campaign data in MongoDB.
  *
+ * Uses queryFilter polling instead of contract.on() to avoid Alchemy's
+ * "block range extends beyond current head block" filter errors on free tier.
+ *
  * Only attaches listeners to ETH campaigns (paymentType === 'eth').
  * Fiat campaigns use pseudo-addresses (0xfiat_...) which are not real contracts.
  */
@@ -22,11 +25,16 @@ const CAMPAIGN_ABI = [
   "event Refunded(address indexed funder, uint256 amount)",
 ]
 
-// Returns true if the contractAddress is a real on-chain address (not a fiat pseudo-address)
+const POLL_INTERVAL_MS  = 30 * 1000   // poll every 30 seconds
+const BLOCK_LOOK_BEHIND = 50          // only look back 50 blocks per poll (safe for Alchemy free tier)
+
 const isRealAddress = (addr) =>
   addr &&
   !addr.startsWith('0xfiat_') &&
   /^0x[0-9a-fA-F]{40}$/.test(addr)
+
+// Track last processed block per contract address to avoid double-processing
+const lastBlock = {}
 
 export const startListener = async () => {
   try {
@@ -36,93 +44,106 @@ export const startListener = async () => {
     }
 
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL)
-    const factory  = new ethers.Contract(
-      process.env.CONTRACT_ADDRESS,
-      FACTORY_ABI,
-      provider
-    )
+    const factory  = new ethers.Contract(process.env.CONTRACT_ADDRESS, FACTORY_ABI, provider)
 
-    console.log('Contract listener started on Sepolia...')
+    console.log('Contract listener started on Sepolia (polling mode)...')
 
-    // ── CampaignCreated — update txHash when on-chain event fires ────────────
-    factory.on('CampaignCreated', async (index, campaignAddress, owner, title, goal, deadline, event) => {
-      console.log(`CampaignCreated event: "${title}" at ${campaignAddress}`)
+    // ── Poll factory for CampaignCreated events ───────────────────────────────
+    const pollFactory = async () => {
       try {
-        const updated = await Campaign.findOneAndUpdate(
-          { contractCampaignId: Number(index) },
-          {
-            $set: {
-              txHash:   event?.log?.transactionHash || '',
-              isActive: true,
+        const latest = await provider.getBlockNumber()
+        const key    = 'factory'
+        const from   = lastBlock[key] ? lastBlock[key] + 1 : latest - BLOCK_LOOK_BEHIND
+
+        if (from > latest) return
+
+        const events = await factory.queryFilter('CampaignCreated', from, latest)
+
+        for (const event of events) {
+          const [index, campaignAddress, , title] = event.args
+          console.log(`CampaignCreated event: "${title}" at ${campaignAddress}`)
+          try {
+            const updated = await Campaign.findOneAndUpdate(
+              { contractCampaignId: Number(index) },
+              { $set: { txHash: event.transactionHash || '', isActive: true } },
+              { new: true }
+            )
+            if (!updated) {
+              await Campaign.findOneAndUpdate(
+                { title, isActive: true },
+                { $set: { txHash: event.transactionHash || '' } }
+              )
             }
-          },
-          { new: true }
-        )
-        if (!updated) {
-          await Campaign.findOneAndUpdate(
-            { title, isActive: true },
-            { $set: { txHash: event?.log?.transactionHash || '' } }
-          )
+          } catch (err) {
+            console.error('CampaignCreated update error:', err.message)
+          }
         }
+
+        lastBlock[key] = latest
       } catch (err) {
-        console.error('CampaignCreated update error:', err.message)
+        console.error('Factory poll error:', err.shortMessage || err.message)
       }
-    })
-
-    // ── Attach Funded/Withdrawn/Refunded listeners to ETH campaigns only ─────
-    const attachCampaignListeners = async () => {
-      // Only fetch ETH campaigns — fiat campaigns have no real contract to listen to
-      const campaigns = await Campaign.find({
-        isActive:    true,
-        paymentType: { $ne: 'fiat' },
-      })
-
-      // Extra safety: filter out any pseudo-addresses that slipped through
-      const ethCampaigns = campaigns.filter(c => isRealAddress(c.contractAddress))
-
-      console.log(`Attaching listeners to ${ethCampaigns.length} campaign(s)...`)
-
-      ethCampaigns.forEach((c) => {
-        const contract = new ethers.Contract(c.contractAddress, CAMPAIGN_ABI, provider)
-
-        // Funded — increment raised amount
-        contract.on('Funded', async (funder, amount) => {
-          const eth = parseFloat(ethers.formatEther(amount))
-          console.log(`Funded: "${c.title}" +${eth} ETH from ${funder}`)
-          try {
-            await Campaign.findByIdAndUpdate(c._id, { $inc: { raised: eth } })
-          } catch (err) {
-            console.error('Funded listener error:', err.message)
-          }
-        })
-
-        // Withdrawn — mark as claimed
-        contract.on('Withdrawn', async (owner, amount) => {
-          console.log(`Withdrawn: "${c.title}" ${ethers.formatEther(amount)} ETH`)
-          try {
-            await Campaign.findByIdAndUpdate(c._id, { $set: { claimed: true } })
-          } catch (err) {
-            console.error('Withdrawn listener error:', err.message)
-          }
-        })
-
-        // Refunded — decrement raised amount
-        contract.on('Refunded', async (funder, amount) => {
-          const eth = parseFloat(ethers.formatEther(amount))
-          console.log(`Refunded: "${c.title}" -${eth} ETH to ${funder}`)
-          try {
-            await Campaign.findByIdAndUpdate(c._id, { $inc: { raised: -eth } })
-          } catch (err) {
-            console.error('Refunded listener error:', err.message)
-          }
-        })
-      })
     }
 
-    await attachCampaignListeners()
+    // ── Poll individual campaign contracts ────────────────────────────────────
+    const pollCampaigns = async () => {
+      try {
+        const campaigns = await Campaign.find({
+          isActive:    true,
+          paymentType: { $ne: 'fiat' },
+        })
 
-    // Re-attach every 5 minutes to pick up newly created ETH campaigns
-    setInterval(attachCampaignListeners, 5 * 60 * 1000)
+        const ethCampaigns = campaigns.filter(c => isRealAddress(c.contractAddress))
+        const latest       = await provider.getBlockNumber()
+
+        for (const c of ethCampaigns) {
+          const key      = c.contractAddress.toLowerCase()
+          const from     = lastBlock[key] ? lastBlock[key] + 1 : latest - BLOCK_LOOK_BEHIND
+
+          if (from > latest) continue
+
+          const contract = new ethers.Contract(c.contractAddress, CAMPAIGN_ABI, provider)
+
+          try {
+            const [funded, withdrawn, refunded] = await Promise.all([
+              contract.queryFilter('Funded',    from, latest),
+              contract.queryFilter('Withdrawn', from, latest),
+              contract.queryFilter('Refunded',  from, latest),
+            ])
+
+            for (const event of funded) {
+              const eth = parseFloat(ethers.formatEther(event.args.amount))
+              console.log(`Funded: "${c.title}" +${eth} ETH from ${event.args.funder}`)
+              await Campaign.findByIdAndUpdate(c._id, { $inc: { raised: eth } })
+            }
+
+            for (const event of withdrawn) {
+              console.log(`Withdrawn: "${c.title}" ${ethers.formatEther(event.args.amount)} ETH`)
+              await Campaign.findByIdAndUpdate(c._id, { $set: { claimed: true } })
+            }
+
+            for (const event of refunded) {
+              const eth = parseFloat(ethers.formatEther(event.args.amount))
+              console.log(`Refunded: "${c.title}" -${eth} ETH to ${event.args.funder}`)
+              await Campaign.findByIdAndUpdate(c._id, { $inc: { raised: -eth } })
+            }
+
+            lastBlock[key] = latest
+          } catch (err) {
+            console.error(`Poll error for campaign "${c.title}":`, err.shortMessage || err.message)
+          }
+        }
+      } catch (err) {
+        console.error('Campaign poll error:', err.shortMessage || err.message)
+      }
+    }
+
+    // ── Start polling ─────────────────────────────────────────────────────────
+    await pollFactory()
+    await pollCampaigns()
+
+    setInterval(pollFactory,   POLL_INTERVAL_MS)
+    setInterval(pollCampaigns, POLL_INTERVAL_MS)
 
   } catch (err) {
     console.error('Listener failed to start:', err.message)
