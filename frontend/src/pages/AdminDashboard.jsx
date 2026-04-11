@@ -17,11 +17,9 @@ const resolveDocUrl = (url) => {
 const DocumentViewer = ({ url }) => {
   const resolved = resolveDocUrl(url)
   if (!resolved) return <p className="text-xs text-gray-400 italic mt-2">No file uploaded</p>
-
   const lower   = resolved.toLowerCase()
   const isPDF   = lower.endsWith('.pdf')
   const isImage = /\.(jpg|jpeg|png|gif|webp)$/.test(lower)
-
   return (
     <div className="mt-3">
       {isImage && (
@@ -38,12 +36,10 @@ const DocumentViewer = ({ url }) => {
           <p className="text-xs text-red-700 font-medium">PDF — {resolved.split('/').pop()}</p>
         </div>
       )}
-      <div className="flex gap-2">
-        <button onClick={() => window.open(resolved, '_blank', 'noopener,noreferrer')}
-          className="flex-1 py-2.5 rounded-xl bg-purple-600 text-white text-xs font-medium hover:bg-purple-700">
-          {isPDF ? 'Open PDF' : 'View document'}
-        </button>
-      </div>
+      <button onClick={() => window.open(resolved, '_blank', 'noopener,noreferrer')}
+        className="w-full py-2.5 rounded-xl bg-purple-600 text-white text-xs font-medium hover:bg-purple-700">
+        {isPDF ? 'Open PDF' : 'View document'}
+      </button>
     </div>
   )
 }
@@ -58,9 +54,7 @@ const AdminNavbar = ({ onSignOut }) => (
           </svg>
         </div>
         <span className="font-semibold text-gray-900 text-lg">FundChain Admin</span>
-        <span className="text-xs text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full font-medium ml-2">
-          Admin mode
-        </span>
+        <span className="text-xs text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full font-medium ml-2">Admin mode</span>
       </div>
       <button onClick={onSignOut}
         className="flex items-center gap-2 text-sm text-red-400 hover:text-red-600 border border-red-200 px-4 py-2 rounded-xl transition-colors hover:bg-red-50">
@@ -116,18 +110,20 @@ const AdminDashboard = () => {
   const { token, logout } = useAuth()
   const navigate          = useNavigate()
 
-  const [tab, setTab]               = useState('campaigns')
-  const [campaigns, setCampaigns]   = useState([])
-  const [users, setUsers]           = useState([])
-  const [loading, setLoading]       = useState(false)
-  const [search, setSearch]         = useState('')
-  const [campFilter, setCampFilter] = useState('all')
-  const [userFilter, setUserFilter] = useState('all')
-  const [docFilter, setDocFilter]   = useState('pending')
-  const [confirm, setConfirm]       = useState(null)
+  const [tab, setTab]             = useState('campaigns')
+  const [campaigns, setCampaigns] = useState([])
+  const [users, setUsers]         = useState([])
+  const [loading, setLoading]     = useState(false)
+  const [search, setSearch]       = useState('')
+  const [campFilter, setCampFilter]       = useState('all')
+  const [userFilter, setUserFilter]       = useState('all')
+  const [userDocFilter, setUserDocFilter] = useState('pending')
+  const [campDocFilter, setCampDocFilter] = useState('pending')
+  const [confirm, setConfirm]             = useState(null)
   const [selectedCampaign, setSelectedCampaign] = useState(null)
-  const [rejectNote, setRejectNote] = useState('')
+  const [rejectNote, setRejectNote]       = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [actionMsg, setActionMsg]         = useState('')
 
   const headers = { Authorization: `Bearer ${token}` }
 
@@ -149,7 +145,8 @@ const AdminDashboard = () => {
 
   useEffect(() => { fetchAll() }, [])
 
-  // ── Campaign pause/resume ─────────────────────────────────────────────────
+  const showMsg = (msg) => { setActionMsg(msg); setTimeout(() => setActionMsg(''), 3000) }
+
   const togglePause = async (campaign) => {
     setActionLoading(true)
     try {
@@ -160,64 +157,59 @@ const AdminDashboard = () => {
       )
       setCampaigns(prev => prev.map(c => c.contractAddress === campaign.contractAddress ? data : c))
       setConfirm(null)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setActionLoading(false)
-    }
+      showMsg(`Campaign ${data.paused ? 'paused' : 'resumed'}.`)
+    } catch (err) { console.error(err) }
+    finally { setActionLoading(false) }
   }
 
-  // ── Campaign verification ─────────────────────────────────────────────────
   const verifyCampaign = async (campaignId, action, note = '') => {
     setActionLoading(true)
     try {
       const endpoint = action === 'verified'
         ? `${API}/campaign-verification/${campaignId}/verify`
         : `${API}/campaign-verification/${campaignId}/reject`
-
       const body = action === 'verified'
         ? { note: note || 'Verified by admin.' }
         : { reason: note || 'Rejected by admin.' }
-
       const { data } = await axios.patch(endpoint, body, { headers })
       setCampaigns(prev => prev.map(c => c._id === campaignId ? { ...c, ...data.data } : c))
       setSelectedCampaign(null)
       setRejectNote('')
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setActionLoading(false)
-    }
+      showMsg(`Campaign ${action}.`)
+    } catch (err) { console.error(err) }
+    finally { setActionLoading(false) }
   }
 
-  // ── User document verification ────────────────────────────────────────────
-  const verifyUserDocument = async (userId, newStatus) => {
+  const verifyUserDocument = async (userId, status) => {
     setActionLoading(true)
     try {
       const { data } = await axios.patch(
         `${API}/auth/users/${userId}/verify-document`,
-        { status: newStatus },
+        { status },
         { headers }
       )
-      
-      // Update user in local state
-      setUsers(prev => prev.map(u => u._id === userId ? data : u))
+      setUsers(prev => prev.map(u =>
+        u._id === userId
+          ? { ...u, isVerified: data.isVerified, document: data.document }
+          : u
+      ))
+      showMsg(`Document ${status} successfully.`)
     } catch (err) {
-      console.error(err)
-    } finally {
-      setActionLoading(false)
+      console.error('verifyUserDocument error:', err)
+      showMsg('Failed to update. Please try again.')
     }
+    finally { setActionLoading(false) }
   }
 
-  // ── Stats ─────────────────────────────────────────────────────────────────
-  const totalRaised         = campaigns.reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0)
-  const activeCamps         = campaigns.filter(c => !c.paused && Date.now() < c.deadline * 1000).length
-  const pendingCampaignDocs = campaigns.filter(c => c.verificationStatus === 'pending' && c.documents?.length > 0).length
-  const pendingUserDocs     = users.filter(u => u.document?.url && (!u.document?.status || u.document?.status === 'pending')).length
+  // Stats
+  const totalRaised     = campaigns.reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0)
+  const activeCamps     = campaigns.filter(c => !c.paused && Date.now() < c.deadline * 1000).length
+  const pendingCampDocs = campaigns.filter(c => c.verificationStatus === 'pending' && c.documents?.length > 0).length
+  const pendingUserDocs = users.filter(u => u.document?.url && (!u.document?.status || u.document?.status === 'pending')).length
 
-  // ── Filtered lists ────────────────────────────────────────────────────────
+  const q = search.toLowerCase()
+
   const filteredCampaigns = campaigns.filter(c => {
-    const q     = search.toLowerCase()
     const match = c.title?.toLowerCase().includes(q) || c.owner?.toLowerCase().includes(q) || c.ownerName?.toLowerCase().includes(q)
     if (!match) return false
     if (campFilter === 'active')   return !c.paused && Date.now() < c.deadline * 1000
@@ -229,28 +221,44 @@ const AdminDashboard = () => {
     return true
   })
 
-  const campaignsWithDocs = campaigns.filter(c => {
-    if (!c.documents?.length) return false
-    const q     = search.toLowerCase()
-    const match = !q || c.title?.toLowerCase().includes(q) || c.ownerName?.toLowerCase().includes(q)
-    if (!match) return false
-    if (docFilter === 'pending')  return c.verificationStatus === 'pending'
-    if (docFilter === 'verified') return c.verificationStatus === 'verified'
-    if (docFilter === 'rejected') return c.verificationStatus === 'rejected'
-    return true
-  })
-
   const filteredUsers = users.filter(u => {
-    const q     = search.toLowerCase()
     const match = u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.username?.toLowerCase().includes(q)
     if (!match) return false
     if (userFilter === 'verified')   return u.isVerified
     if (userFilter === 'unverified') return !u.isVerified
-    if (userFilter === 'doc-pending') return u.document?.url && (!u.document?.status || u.document?.status === 'pending')
+    return true
+  })
+
+  const filteredUserDocs = users.filter(u => {
+    if (!u.document?.url) return false
+    const match = !q || u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)
+    if (!match) return false
+    const s = u.document?.status || 'pending'
+    if (userDocFilter === 'pending')  return !u.document?.status || s === 'pending'
+    if (userDocFilter === 'verified') return s === 'verified'
+    if (userDocFilter === 'rejected') return s === 'rejected'
+    return true
+  })
+
+  const filteredCampDocs = campaigns.filter(c => {
+    if (!c.documents?.length) return false
+    const match = !q || c.title?.toLowerCase().includes(q) || c.ownerName?.toLowerCase().includes(q)
+    if (!match) return false
+    if (campDocFilter === 'pending')  return c.verificationStatus === 'pending'
+    if (campDocFilter === 'verified') return c.verificationStatus === 'verified'
+    if (campDocFilter === 'rejected') return c.verificationStatus === 'rejected'
     return true
   })
 
   const short = (addr) => addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : '—'
+
+  const TABS = [
+    { key: 'campaigns',     label: 'Campaigns',      count: campaigns.length,  badge: false },
+    { key: 'users',         label: 'Users',           count: users.length,      badge: false },
+    { key: 'user-docs',     label: 'User Docs',       count: pendingUserDocs,   badge: pendingUserDocs > 0 },
+    { key: 'campaign-docs', label: 'Campaign Docs',   count: pendingCampDocs,   badge: pendingCampDocs > 0 },
+    { key: 'refunds',       label: 'Refunds',         count: 0,                 badge: false },
+  ]
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -268,25 +276,28 @@ const AdminDashboard = () => {
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} />
           <StatCard label="Total users" value={users.length} color="bg-amber-100"
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>} />
-          <StatCard label="Pending docs" value={pendingCampaignDocs + pendingUserDocs} color="bg-red-100"
+          <StatCard label="Pending docs" value={pendingCampDocs + pendingUserDocs} color="bg-red-100"
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>} />
         </div>
 
+        {/* Action toast */}
+        {actionMsg && (
+          <div className="mb-4 bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3 rounded-xl flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+            {actionMsg}
+          </div>
+        )}
+
         {/* Tabs */}
-        <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 mb-5 w-fit">
-          {[
-            { key: 'campaigns', label: 'Campaigns', count: campaigns.length,                      badge: false },
-            { key: 'users',     label: 'Users',     count: users.length,                          badge: false },
-            { key: 'documents', label: 'Documents', count: pendingCampaignDocs,                   badge: true  },
-            { key: 'refunds',   label: 'Refunds',   count: 0,                                     badge: false },
-          ].map(t => (
+        <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 mb-5 flex-wrap">
+          {TABS.map(t => (
             <button key={t.key} onClick={() => { setTab(t.key); setSearch('') }}
-              className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
                 tab === t.key ? 'bg-purple-600 text-white' : 'text-gray-500 hover:text-gray-700'
               }`}>
               {t.label}
-              {t.badge && t.count > 0
-                ? <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{t.count}</span>
+              {t.badge
+                ? <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full leading-none">{t.count}</span>
                 : <span className={`text-xs ${tab === t.key ? 'opacity-70' : 'text-gray-400'}`}>({t.count})</span>
               }
             </button>
@@ -299,34 +310,35 @@ const AdminDashboard = () => {
             <input type="text" placeholder={`Search ${tab}...`} value={search}
               onChange={e => setSearch(e.target.value)}
               className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-purple-400 bg-white" />
-
             {tab === 'campaigns' && (
               <div className="flex gap-2 flex-wrap">
-                {['all', 'active', 'paused', 'pending', 'verified', 'funded', 'expired'].map(f => (
+                {['all','active','paused','pending','verified','funded','expired'].map(f => (
                   <button key={f} onClick={() => setCampFilter(f)}
-                    className={`px-3 py-2 rounded-lg text-xs font-medium capitalize transition-colors ${
-                      campFilter === f ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}>{f}</button>
+                    className={`px-3 py-2 rounded-lg text-xs font-medium capitalize ${campFilter === f ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>{f}</button>
                 ))}
               </div>
             )}
             {tab === 'users' && (
               <div className="flex gap-2 flex-wrap">
-                {['all', 'verified', 'unverified', 'doc-pending'].map(f => (
+                {['all','verified','unverified'].map(f => (
                   <button key={f} onClick={() => setUserFilter(f)}
-                    className={`px-3 py-2 rounded-lg text-xs font-medium capitalize transition-colors ${
-                      userFilter === f ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}>{f === 'doc-pending' ? 'Pending docs' : f}</button>
+                    className={`px-3 py-2 rounded-lg text-xs font-medium capitalize ${userFilter === f ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>{f}</button>
                 ))}
               </div>
             )}
-            {tab === 'documents' && (
+            {tab === 'user-docs' && (
               <div className="flex gap-2 flex-wrap">
-                {['all', 'pending', 'verified', 'rejected'].map(f => (
-                  <button key={f} onClick={() => setDocFilter(f)}
-                    className={`px-3 py-2 rounded-lg text-xs font-medium capitalize transition-colors ${
-                      docFilter === f ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}>{f}</button>
+                {['all','pending','verified','rejected'].map(f => (
+                  <button key={f} onClick={() => setUserDocFilter(f)}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium capitalize ${userDocFilter === f ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>{f}</button>
+                ))}
+              </div>
+            )}
+            {tab === 'campaign-docs' && (
+              <div className="flex gap-2 flex-wrap">
+                {['all','pending','verified','rejected'].map(f => (
+                  <button key={f} onClick={() => setCampDocFilter(f)}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium capitalize ${campDocFilter === f ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>{f}</button>
                 ))}
               </div>
             )}
@@ -341,85 +353,178 @@ const AdminDashboard = () => {
         ) : (
           <div>
 
-            {/* ── CAMPAIGNS TAB ── */}
+            {/* ── CAMPAIGNS ── */}
             {tab === 'campaigns' && (
               <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-                {filteredCampaigns.length === 0 ? (
-                  <div className="text-center py-16 text-gray-400 text-sm">No campaigns found.</div>
-                ) : (
-                  <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
-                    <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50">
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-[25%]">Campaign</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-[16%]">Owner</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-[20%]">Progress</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-[10%]">Category</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-[14%]">Verification</th>
-                        <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 w-[15%]">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredCampaigns.map(c => {
-                        const pct = Math.min((parseFloat(c.amountRaised || 0) / parseFloat(c.goal || 1)) * 100, 100)
-                        return (
-                          <tr key={c._id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3">
-                              <span onClick={() => navigate(`/campaign/${c.contractAddress}`)}
-                                className="font-medium text-gray-900 truncate block cursor-pointer hover:text-purple-600 text-sm">
-                                {c.title}
-                              </span>
-                              <p className="font-mono text-xs text-gray-400 truncate">{short(c.contractAddress)}</p>
-                            </td>
-                            <td className="px-4 py-3">
-                              <p className="text-xs font-medium text-gray-700 truncate">{c.ownerName || '—'}</p>
-                              {c.ownerUsername && <p className="text-xs text-purple-500">@{c.ownerUsername}</p>}
-                            </td>
-                            <td className="px-4 py-3">
-                              <ProgressBar percent={pct} />
-                              <p className="text-xs text-gray-400 mt-1">{c.amountRaised || 0} / {c.goal} ETH</p>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className="text-xs bg-purple-50 text-purple-600 px-2 py-1 rounded-full capitalize">
-                                {c.category || '—'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <VerifStatusBadge status={c.verificationStatus} />
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <div className="flex gap-1 justify-end">
-                                <button onClick={() => setConfirm(c)}
-                                  className={`text-xs px-2 py-1.5 rounded-lg border font-medium transition-colors ${
-                                    c.paused ? 'border-green-200 text-green-600 hover:bg-green-50' : 'border-red-200 text-red-500 hover:bg-red-50'
-                                  }`}>
-                                  {c.paused ? 'Resume' : 'Pause'}
-                                </button>
-                                {c.documents?.length > 0 && (
-                                  <button onClick={() => setSelectedCampaign(c)}
-                                    className="text-xs px-2 py-1.5 rounded-lg border border-purple-200 text-purple-600 hover:bg-purple-50 font-medium">
-                                    Docs
+                {filteredCampaigns.length === 0
+                  ? <div className="text-center py-16 text-gray-400 text-sm">No campaigns found.</div>
+                  : (
+                    <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50">
+                          <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-[25%]">Campaign</th>
+                          <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-[16%]">Owner</th>
+                          <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-[20%]">Progress</th>
+                          <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-[10%]">Category</th>
+                          <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-[14%]">Verification</th>
+                          <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 w-[15%]">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredCampaigns.map(c => {
+                          const pct = Math.min((parseFloat(c.amountRaised || 0) / parseFloat(c.goal || 1)) * 100, 100)
+                          return (
+                            <tr key={c._id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-3">
+                                <span onClick={() => navigate(`/campaign/${c.contractAddress}`)}
+                                  className="font-medium text-gray-900 truncate block cursor-pointer hover:text-purple-600 text-sm">{c.title}</span>
+                                <p className="font-mono text-xs text-gray-400 truncate">{short(c.contractAddress)}</p>
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="text-xs font-medium text-gray-700 truncate">{c.ownerName || '—'}</p>
+                                {c.ownerUsername && <p className="text-xs text-purple-500">@{c.ownerUsername}</p>}
+                              </td>
+                              <td className="px-4 py-3">
+                                <ProgressBar percent={pct} />
+                                <p className="text-xs text-gray-400 mt-1">{c.amountRaised || 0} / {c.goal} ETH</p>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="text-xs bg-purple-50 text-purple-600 px-2 py-1 rounded-full capitalize">{c.category || '—'}</span>
+                              </td>
+                              <td className="px-4 py-3"><VerifStatusBadge status={c.verificationStatus} /></td>
+                              <td className="px-4 py-3 text-right">
+                                <div className="flex gap-1 justify-end">
+                                  <button onClick={() => setConfirm(c)}
+                                    className={`text-xs px-2 py-1.5 rounded-lg border font-medium transition-colors ${c.paused ? 'border-green-200 text-green-600 hover:bg-green-50' : 'border-red-200 text-red-500 hover:bg-red-50'}`}>
+                                    {c.paused ? 'Resume' : 'Pause'}
                                   </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                )}
+                                  {c.documents?.length > 0 && (
+                                    <button onClick={() => setSelectedCampaign(c)}
+                                      className="text-xs px-2 py-1.5 rounded-lg border border-purple-200 text-purple-600 hover:bg-purple-50 font-medium">Docs</button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )
+                }
               </div>
             )}
 
-            {/* ── DOCUMENTS TAB ── */}
-            {tab === 'documents' && (
+            {/* ── USERS ── */}
+            {tab === 'users' && (
+              <div className="space-y-3">
+                {filteredUsers.length === 0
+                  ? <div className="text-center py-16 text-gray-400 text-sm bg-white border border-gray-200 rounded-2xl">No users found.</div>
+                  : filteredUsers.map(u => (
+                    <div key={u._id} className="bg-white border border-gray-200 rounded-2xl p-5">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-lg shrink-0 overflow-hidden">
+                            {u.profilePhoto
+                              ? <img src={u.profilePhoto} alt={u.name} className="w-full h-full object-cover" />
+                              : (u.name ? u.name.slice(0, 2).toUpperCase() : u.email.slice(0, 2).toUpperCase())
+                            }
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold text-gray-900">{u.name || '—'}</p>
+                              {u.isVerified
+                                ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Verified</span>
+                                : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Unverified</span>
+                              }
+                              {u.document?.url && <DocStatusBadge status={u.document?.status || 'pending'} />}
+                            </div>
+                            {u.username && <p className="text-xs text-purple-500">@{u.username}</p>}
+                            <p className="text-sm text-gray-500">{u.email}</p>
+                            {u.phone && <p className="text-xs text-gray-400">{u.phone}</p>}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs text-gray-400">Joined {new Date(u.createdAt).toLocaleDateString()}</p>
+                          <div className="flex items-center gap-1 mt-1 flex-wrap justify-end">
+                            {u.emailVerified && <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">Email ✓</span>}
+                            {u.phoneVerified && <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">Phone ✓</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                }
+              </div>
+            )}
+
+            {/* ── USER DOCUMENTS ── */}
+            {tab === 'user-docs' && (
               <div className="space-y-4">
-                {campaignsWithDocs.length === 0 ? (
-                  <div className="text-center py-16 text-gray-400 text-sm bg-white border border-gray-200 rounded-2xl">
-                    No campaign documents found.
-                  </div>
-                ) : (
-                  campaignsWithDocs.map(c => (
+                {filteredUserDocs.length === 0
+                  ? <div className="text-center py-16 text-gray-400 text-sm bg-white border border-gray-200 rounded-2xl">No user documents found.</div>
+                  : filteredUserDocs.map(u => (
+                    <div key={u._id} className="bg-white border border-gray-200 rounded-2xl p-5">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold shrink-0 overflow-hidden">
+                            {u.profilePhoto
+                              ? <img src={u.profilePhoto} alt={u.name} className="w-full h-full object-cover" />
+                              : (u.name ? u.name.slice(0, 2).toUpperCase() : u.email.slice(0, 2).toUpperCase())
+                            }
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-gray-900 text-sm">{u.name || '—'}</p>
+                              {u.isVerified
+                                ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Verified</span>
+                                : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Unverified</span>
+                              }
+                            </div>
+                            <p className="text-xs text-gray-400">{u.email}</p>
+                          </div>
+                        </div>
+                        <DocStatusBadge status={u.document?.status || 'pending'} />
+                      </div>
+
+                      <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                        <p className="text-xs font-semibold text-gray-700 capitalize mb-1">
+                          {u.document?.type || 'Identity'} document
+                        </p>
+                        <DocumentViewer url={u.document?.url} />
+                      </div>
+
+                      <div className="flex gap-3">
+                        {u.document?.status !== 'verified' && (
+                          <button onClick={() => verifyUserDocument(u._id, 'verified')} disabled={actionLoading}
+                            className="flex-1 py-2.5 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors">
+                            ✓ Verify user
+                          </button>
+                        )}
+                        {u.document?.status !== 'rejected' && (
+                          <button onClick={() => verifyUserDocument(u._id, 'rejected')} disabled={actionLoading}
+                            className="flex-1 py-2.5 rounded-xl border border-red-200 text-red-500 text-sm font-medium hover:bg-red-50 disabled:opacity-50 transition-colors">
+                            ✕ Reject
+                          </button>
+                        )}
+                        {u.document?.status === 'verified' && (
+                          <button onClick={() => verifyUserDocument(u._id, 'pending')} disabled={actionLoading}
+                            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors">
+                            ↩ Revoke
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                }
+              </div>
+            )}
+
+            {/* ── CAMPAIGN DOCUMENTS ── */}
+            {tab === 'campaign-docs' && (
+              <div className="space-y-4">
+                {filteredCampDocs.length === 0
+                  ? <div className="text-center py-16 text-gray-400 text-sm bg-white border border-gray-200 rounded-2xl">No campaign documents found.</div>
+                  : filteredCampDocs.map(c => (
                     <div key={c._id} className="bg-white border border-gray-200 rounded-2xl p-5">
                       <div className="flex items-start justify-between gap-4 mb-4">
                         <div>
@@ -434,27 +539,21 @@ const AdminDashboard = () => {
                         <div className="flex gap-2 shrink-0">
                           {c.verificationStatus !== 'verified' && (
                             <button onClick={() => verifyCampaign(c._id, 'verified')} disabled={actionLoading}
-                              className="text-xs px-3 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 font-medium">
-                              ✓ Approve
-                            </button>
+                              className="text-xs px-3 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 font-medium">✓ Approve</button>
                           )}
                           {c.verificationStatus !== 'rejected' && (
                             <button onClick={() => setSelectedCampaign(c)} disabled={actionLoading}
-                              className="text-xs px-3 py-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 font-medium">
-                              ✕ Reject
-                            </button>
+                              className="text-xs px-3 py-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 font-medium">✕ Reject</button>
                           )}
                           {c.verificationStatus === 'verified' && (
                             <button onClick={() => verifyCampaign(c._id, 'rejected', 'Verification revoked by admin.')} disabled={actionLoading}
-                              className="text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 font-medium">
-                              Revoke
-                            </button>
+                              className="text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 font-medium">Revoke</button>
                           )}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {c.documents.map(doc => (
-                          <div key={doc.docId} className="border border-gray-200 rounded-xl p-3">
+                          <div key={doc.docId || doc._id} className="border border-gray-200 rounded-xl p-3">
                             <div className="flex items-center justify-between mb-1">
                               <p className="text-xs font-semibold text-gray-800">{doc.name}</p>
                               <DocStatusBadge status={doc.status} />
@@ -465,146 +564,22 @@ const AdminDashboard = () => {
                       </div>
                     </div>
                   ))
-                )}
+                }
               </div>
             )}
 
-            {/* ── USERS TAB ── */}
-            {tab === 'users' && (
-              <div className="space-y-3">
-                {filteredUsers.length === 0 ? (
-                  <div className="text-center py-16 text-gray-400 text-sm bg-white border border-gray-200 rounded-2xl">
-                    No users found.
-                  </div>
-                ) : (
-                  filteredUsers.map(u => {
-                    const docStatus = u.document?.status || 'pending'
-                    
-                    return (
-                      <div key={u._id} className="bg-white border border-gray-200 rounded-2xl p-5">
-                        {/* User info row */}
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-lg shrink-0 overflow-hidden">
-                              {u.profilePhoto
-                                ? <img src={u.profilePhoto} alt={u.name} className="w-full h-full object-cover" />
-                                : (u.name ? u.name.slice(0, 2).toUpperCase() : u.email.slice(0, 2).toUpperCase())
-                              }
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="font-semibold text-gray-900">{u.name || '—'}</p>
-                                {u.isVerified && (
-                                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                      <path d="M20 6L9 17l-5-5"/>
-                                    </svg>
-                                    Verified
-                                  </span>
-                                )}
-                                {!u.isVerified && u.document?.url && (
-                                  <DocStatusBadge status={docStatus} />
-                                )}
-                              </div>
-                              {u.username && <p className="text-xs text-purple-500">@{u.username}</p>}
-                              <p className="text-sm text-gray-500">{u.email}</p>
-                              {u.phone && <p className="text-xs text-gray-400">{u.phone}</p>}
-                            </div>
-                          </div>
-                          <p className="text-xs text-gray-400 shrink-0">
-                            Joined {new Date(u.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-
-                        {/* Identity document section */}
-                        {u.document?.url ? (
-                          <div className="mt-4 border-t border-gray-100 pt-4">
-                            <div className="flex items-center justify-between mb-3">
-                              <div>
-                                <p className="text-xs font-semibold text-gray-700 capitalize">
-                                  {u.document.type || 'Identity'} document
-                                </p>
-                                <p className="text-xs text-gray-400 mt-0.5">
-                                  Submitted for identity verification
-                                </p>
-                              </div>
-                              
-                              {/* FIXED: Proper button logic based on current status */}
-                              <div className="flex gap-2">
-                                {docStatus === 'pending' && (
-                                  <>
-                                    <button
-                                      onClick={() => verifyUserDocument(u._id, 'verified')}
-                                      disabled={actionLoading}
-                                      className="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
-                                    >
-                                      ✓ Verify user
-                                    </button>
-                                    <button
-                                      onClick={() => verifyUserDocument(u._id, 'rejected')}
-                                      disabled={actionLoading}
-                                      className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 font-medium transition-colors"
-                                    >
-                                      ✕ Reject
-                                    </button>
-                                  </>
-                                )}
-                                
-                                {docStatus === 'verified' && (
-                                  <button
-                                    onClick={() => verifyUserDocument(u._id, 'pending')}
-                                    disabled={actionLoading}
-                                    className="text-xs px-3 py-1.5 rounded-lg border border-amber-200 text-amber-600 hover:bg-amber-50 font-medium transition-colors"
-                                  >
-                                    ↻ Revoke verification
-                                  </button>
-                                )}
-                                
-                                {docStatus === 'rejected' && (
-                                  <>
-                                    <button
-                                      onClick={() => verifyUserDocument(u._id, 'verified')}
-                                      disabled={actionLoading}
-                                      className="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
-                                    >
-                                      ✓ Approve now
-                                    </button>
-                                    <button
-                                      onClick={() => verifyUserDocument(u._id, 'pending')}
-                                      disabled={actionLoading}
-                                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 font-medium transition-colors"
-                                    >
-                                      ↻ Reset to pending
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                            <DocumentViewer url={u.document.url} />
-                          </div>
-                        ) : (
-                          <div className="mt-3 pt-3 border-t border-gray-100">
-                            <p className="text-xs text-gray-400 italic">No identity document submitted</p>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })
-                )}
-              </div>
-            )}
-
-            {/* ── REFUNDS TAB ── */}
+            {/* ── REFUNDS ── */}
             {tab === 'refunds' && (
               <div className="bg-white border border-gray-200 rounded-2xl p-5">
                 <RefundManagementPanel />
               </div>
             )}
+
           </div>
         )}
       </div>
 
-      {/* ── Pause/Resume confirm modal ── */}
+      {/* Pause/Resume modal */}
       {confirm && (
         <div style={{ minHeight: '100vh', background: 'rgba(0,0,0,0.5)' }}
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -616,13 +591,9 @@ const AdminDashboard = () => {
             <p className="text-sm text-gray-500 text-center mb-6">"{confirm.title}"</p>
             <div className="flex gap-3">
               <button onClick={() => setConfirm(null)}
-                className="flex-1 py-2.5 rounded-xl text-sm border border-gray-200 text-gray-600 hover:bg-gray-50">
-                Cancel
-              </button>
+                className="flex-1 py-2.5 rounded-xl text-sm border border-gray-200 text-gray-600 hover:bg-gray-50">Cancel</button>
               <button onClick={() => togglePause(confirm)} disabled={actionLoading}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-50 ${
-                  confirm.paused ? 'bg-green-600 hover:bg-green-700' : 'bg-red-500 hover:bg-red-600'
-                }`}>
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-50 ${confirm.paused ? 'bg-green-600 hover:bg-green-700' : 'bg-red-500 hover:bg-red-600'}`}>
                 {actionLoading ? 'Processing...' : confirm.paused ? 'Resume' : 'Pause'}
               </button>
             </div>
@@ -630,7 +601,7 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* ── Campaign reject modal ── */}
+      {/* Campaign reject modal */}
       {selectedCampaign && selectedCampaign.verificationStatus !== 'verified' && (
         <div style={{ minHeight: '100vh', background: 'rgba(0,0,0,0.5)' }}
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -639,14 +610,11 @@ const AdminDashboard = () => {
             <h2 className="text-lg font-semibold text-gray-900">Reject campaign</h2>
             <p className="text-sm text-gray-500">"{selectedCampaign.title}"</p>
             <textarea value={rejectNote} onChange={e => setRejectNote(e.target.value)}
-              placeholder="Reason for rejection (required)"
-              rows={3}
+              placeholder="Reason for rejection (required)" rows={3}
               className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-red-300 resize-none" />
             <div className="flex gap-3">
               <button onClick={() => { setSelectedCampaign(null); setRejectNote('') }}
-                className="flex-1 py-2.5 rounded-xl text-sm border border-gray-200 text-gray-600 hover:bg-gray-50">
-                Cancel
-              </button>
+                className="flex-1 py-2.5 rounded-xl text-sm border border-gray-200 text-gray-600 hover:bg-gray-50">Cancel</button>
               <button onClick={() => verifyCampaign(selectedCampaign._id, 'rejected', rejectNote)}
                 disabled={actionLoading || !rejectNote.trim()}
                 className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-red-500 text-white hover:bg-red-600 disabled:opacity-50">
