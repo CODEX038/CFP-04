@@ -55,14 +55,13 @@ const VerifBadge = ({ ok, label }) => (
 )
 
 const getStatus = (c) => {
-  const nowMs    = Date.now()
-  // deadline may be unix seconds (smart contract) or ms — normalise
+  const nowMs = Date.now()
   const deadlineMs = c.deadline > 1e12 ? c.deadline : c.deadline * 1000
-  const expired  = nowMs > deadlineMs
-  const funded   = parseFloat(c.amountRaised) >= parseFloat(c.goal)
+  const expired = nowMs > deadlineMs
+  const funded = parseFloat(c.amountRaised) >= parseFloat(c.goal)
   const expiring = !expired && (deadlineMs - nowMs) < 1000 * 60 * 60 * 24 * 7
-  if (funded)   return 'funded'
-  if (expired)  return 'expired'
+  if (funded) return 'funded'
+  if (expired) return 'expired'
   if (expiring) return 'expiring'
   return 'active'
 }
@@ -91,24 +90,29 @@ const short = (addr) => addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : '—'
 // ── Main component ────────────────────────────────────────────────────────────
 const Profile = () => {
   const { account, connectWallet, chainId } = useWallet()
-  const { user, token, logout }             = useAuth()
-  const navigate                            = useNavigate()
-  const [tab, setTab]                       = useState('details')
-  const [fullUser, setFullUser]             = useState(null)
-  const [upiDonations, setUpiDonations]     = useState([])
-  const { campaigns, loading }              = useCampaigns()
+  const { user, token, logout } = useAuth()
+  const navigate = useNavigate()
+  const [tab, setTab] = useState('details')
+  const [fullUser, setFullUser] = useState(null)
+  const [myDonations, setMyDonations] = useState([])
+  const [loadingDonations, setLoadingDonations] = useState(false)
+  const { campaigns, loading } = useCampaigns()
 
   // Campaigns created by this wallet
   const created = campaigns.filter(
     (c) => c.owner?.toLowerCase() === account?.toLowerCase()
   )
 
-  // ── ETH stats (on-chain campaigns) ───────────────────────────────────────
-  const ethCampaigns  = created.filter(c => c.paymentType !== 'fiat')
+  // ── ETH/UPI stats ─────────────────────────────────────────────────────────
+  const ethCampaigns = created.filter(c => c.paymentType !== 'fiat')
   const fiatCampaigns = created.filter(c => c.paymentType === 'fiat')
 
-  const totalEthRaised  = ethCampaigns.reduce((s, c) => s + (parseFloat(c.amountRaised) || 0), 0)
-  const totalUpiRaised  = fiatCampaigns.reduce((s, c) => s + (parseFloat(c.amountRaised) || 0), 0)
+  const totalEthRaised = ethCampaigns.reduce((s, c) => s + (parseFloat(c.amountRaised) || 0), 0)
+  const totalUpiRaised = fiatCampaigns.reduce((s, c) => s + (parseFloat(c.amountRaised) || 0), 0)
+
+  // ── Donated stats (as a donor) ────────────────────────────────────────────
+  const paidDonations = myDonations.filter(d => d.status === 'paid')
+  const totalDonated = paidDonations.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0)
 
   const fundedCount = created.filter(
     (c) => parseFloat(c.amountRaised) >= parseFloat(c.goal)
@@ -119,13 +123,13 @@ const Profile = () => {
 
   // Network info
   const networkName = chainId === 11155111 ? 'Sepolia Testnet'
-                    : chainId === 1         ? 'Ethereum Mainnet'
-                    : chainId === 31337     ? 'Anvil Local'
-                    : chainId              ? `Chain ${chainId}`
-                    : 'Unknown'
+    : chainId === 1 ? 'Ethereum Mainnet'
+      : chainId === 31337 ? 'Anvil Local'
+        : chainId ? `Chain ${chainId}`
+          : 'Unknown'
   const networkColor = chainId === 11155111 ? 'text-blue-600'
-                     : chainId === 1         ? 'text-green-600'
-                     : 'text-gray-500'
+    : chainId === 1 ? 'text-green-600'
+      : 'text-gray-500'
 
   // Fetch full user profile
   useEffect(() => {
@@ -134,17 +138,25 @@ const Profile = () => {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(({ data }) => setFullUser(data))
-      .catch(() => {})
+      .catch(() => { })
   }, [token])
 
-  // Fetch user's UPI donation history (for UPI raised total on their campaigns)
+  // Fetch user's donations
   useEffect(() => {
     if (!token) return
+    setLoadingDonations(true)
     axios.get(`${API}/donations/my`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then(({ data }) => setUpiDonations(data.data || []))
-      .catch(() => {})
+      .then(({ data }) => {
+        setMyDonations(data.data || [])
+      })
+      .catch((err) => {
+        console.error('Failed to fetch donations:', err)
+      })
+      .finally(() => {
+        setLoadingDonations(false)
+      })
   }, [token])
 
   const displayUser = fullUser || user
@@ -153,8 +165,8 @@ const Profile = () => {
     <div className="flex flex-col items-center justify-center py-32 gap-4">
       <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="1.5">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-          <circle cx="12" cy="7" r="4"/>
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
         </svg>
       </div>
       <p className="text-gray-500">Connect your wallet to view your profile.</p>
@@ -209,8 +221,8 @@ const Profile = () => {
                 {displayUser?.location && (
                   <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                      <circle cx="12" cy="10" r="3"/>
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                      <circle cx="12" cy="10" r="3" />
                     </svg>
                     {displayUser.location}
                   </p>
@@ -237,9 +249,9 @@ const Profile = () => {
         </div>
 
         {/* ── Stats row ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Campaigns"    value={created.length} />
-          <StatCard label="Funded"       value={fundedCount}    color="text-green-600" />
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <StatCard label="Campaigns" value={created.length} />
+          <StatCard label="Funded" value={fundedCount} color="text-green-600" />
           <StatCard
             label="ETH raised"
             value={`${totalEthRaised.toFixed(4)}`}
@@ -250,6 +262,11 @@ const Profile = () => {
             label="UPI raised"
             value={`₹${totalUpiRaised.toLocaleString('en-IN')}`}
             color="text-blue-600"
+          />
+          <StatCard
+            label="Total donated"
+            value={`₹${totalDonated.toLocaleString('en-IN')}`}
+            color="text-green-600"
           />
         </div>
 
@@ -273,13 +290,15 @@ const Profile = () => {
       </div>
 
       {/* ── Tabs ── */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6">
-        {['details', 'wallet', 'campaigns', 'documents'].map((t) => (
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6 overflow-x-auto">
+        {['details', 'wallet', 'campaigns', 'donations', 'documents'].map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${
-              tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}>
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium capitalize transition-colors whitespace-nowrap ${tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>
             {t}
+            {t === 'donations' && paidDonations.length > 0 && (
+              <span className="ml-1 text-xs opacity-70">({paidDonations.length})</span>
+            )}
           </button>
         ))}
       </div>
@@ -295,13 +314,13 @@ const Profile = () => {
             </h2>
             {displayUser ? (
               <div>
-                <InfoRow label="Full name"     value={displayUser.name} />
-                <InfoRow label="Username"      value={displayUser.username ? `@${displayUser.username}` : null} />
-                <InfoRow label="Email"         value={displayUser.email} />
-                <InfoRow label="Phone"         value={displayUser.phone} />
+                <InfoRow label="Full name" value={displayUser.name} />
+                <InfoRow label="Username" value={displayUser.username ? `@${displayUser.username}` : null} />
+                <InfoRow label="Email" value={displayUser.email} />
+                <InfoRow label="Phone" value={displayUser.phone} />
                 <InfoRow label="Date of birth" value={formatDate(displayUser.dob)} />
-                <InfoRow label="Location"      value={displayUser.location} />
-                <InfoRow label="Wallet"        value={account} mono />
+                <InfoRow label="Location" value={displayUser.location} />
+                <InfoRow label="Wallet" value={account} mono />
               </div>
             ) : (
               <div className="text-center py-8 text-gray-400 text-sm">
@@ -338,7 +357,7 @@ const Profile = () => {
                 <div className="flex gap-2 flex-wrap justify-end">
                   <VerifBadge ok={displayUser.emailVerified} label="Email" />
                   <VerifBadge ok={displayUser.phoneVerified} label="Phone" />
-                  <VerifBadge ok={displayUser.isVerified}    label="Identity" />
+                  <VerifBadge ok={displayUser.isVerified} label="Identity" />
                 </div>
               </div>
               {displayUser.isAdmin && (
@@ -352,7 +371,7 @@ const Profile = () => {
             </div>
           )}
 
-          {/* Raised breakdown — only if user has campaigns */}
+          {/* Raised breakdown */}
           {created.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-2xl p-6">
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
@@ -365,7 +384,7 @@ const Profile = () => {
                   <div className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center">
                       <svg width="12" height="12" viewBox="0 0 320 512" fill="#7c3aed">
-                        <path d="M311.9 260.8L160 353.6 8 260.8 160 0l151.9 260.8zM160 383.4L8 290.6 160 512l152-221.4-152 92.8z"/>
+                        <path d="M311.9 260.8L160 353.6 8 260.8 160 0l151.9 260.8zM160 383.4L8 290.6 160 512l152-221.4-152 92.8z" />
                       </svg>
                     </div>
                     <div>
@@ -390,8 +409,8 @@ const Profile = () => {
                   <div className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5">
-                        <rect x="2" y="5" width="20" height="14" rx="3"/>
-                        <path d="M2 10h20"/>
+                        <rect x="2" y="5" width="20" height="14" rx="3" />
+                        <path d="M2 10h20" />
                       </svg>
                     </div>
                     <div>
@@ -409,6 +428,31 @@ const Profile = () => {
                       style={{ width: `${Math.min((totalUpiRaised / Math.max(...fiatCampaigns.map(c => parseFloat(c.goal) || 1))) * 100, 100)}%` }} />
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Donation summary */}
+          {paidDonations.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-2xl p-6">
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
+                Donation summary
+              </h2>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5">
+                      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">Total donated to campaigns</p>
+                    <p className="text-xs text-gray-400">{paidDonations.length} donation{paidDonations.length !== 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+                <p className="text-lg font-bold text-green-600">
+                  ₹{totalDonated.toLocaleString('en-IN')}
+                </p>
               </div>
             </div>
           )}
@@ -479,7 +523,7 @@ const Profile = () => {
             </div>
           ) : (
             created.map((c) => {
-              const pct    = Math.min((parseFloat(c.amountRaised) / parseFloat(c.goal)) * 100, 100)
+              const pct = Math.min((parseFloat(c.amountRaised) / parseFloat(c.goal)) * 100, 100)
               const status = getStatus(c)
               const isFiat = c.paymentType === 'fiat'
               return (
@@ -492,9 +536,8 @@ const Profile = () => {
                         <h3 className="font-semibold text-gray-900 truncate hover:text-purple-700">
                           {c.title}
                         </h3>
-                        <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${
-                          isFiat ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
-                        }`}>
+                        <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${isFiat ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
+                          }`}>
                           {isFiat ? 'UPI' : 'ETH'}
                         </span>
                       </div>
@@ -529,6 +572,81 @@ const Profile = () => {
                 </div>
               )
             })
+          )}
+        </div>
+      )}
+
+      {/* ── DONATIONS TAB (NEW) ── */}
+      {tab === 'donations' && (
+        <div className="space-y-4">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-800">My Donations</h2>
+              <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                {paidDonations.length} paid
+              </span>
+            </div>
+
+            {loadingDonations ? (
+              <div className="text-center py-12 text-gray-400">
+                <div className="w-6 h-6 border-2 border-gray-200 border-t-purple-600 rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-sm">Loading donations...</p>
+              </div>
+            ) : myDonations.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mx-auto mb-3 opacity-40">
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                </svg>
+                <p className="text-sm mb-1">No donations yet</p>
+                <p className="text-xs">Support a campaign to make a difference!</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {myDonations.map((d) => {
+                  const statusConfig = {
+                    paid: { bg: 'bg-green-100', text: 'text-green-700', label: 'Paid' },
+                    pending: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Pending' },
+                    failed: { bg: 'bg-red-100', text: 'text-red-600', label: 'Failed' },
+                    refund_requested: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Refund Requested' },
+                    refunded: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Refunded' },
+                  }
+                  const status = statusConfig[d.status] || statusConfig.pending
+
+                  return (
+                    <div key={d._id} className="border border-gray-200 rounded-xl p-4 hover:border-purple-200 transition-colors">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 text-sm truncate">
+                            {d.campaign?.title || 'Campaign'}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {formatDate(d.createdAt)}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0 ml-3">
+                          <p className="font-bold text-gray-900">₹{d.amount?.toLocaleString('en-IN')}</p>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.bg} ${status.text}`}>
+                            {status.label}
+                          </span>
+                        </div>
+                      </div>
+                      {d.message && (
+                        <p className="text-xs text-gray-500 italic mt-2 truncate">"{d.message}"</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {paidDonations.length > 0 && (
+            <div className="bg-gradient-to-br from-green-50 to-blue-50 border border-green-200 rounded-2xl p-5 text-center">
+              <p className="text-3xl font-bold text-green-600 mb-1">
+                ₹{totalDonated.toLocaleString('en-IN')}
+              </p>
+              <p className="text-sm text-gray-600">Total donated to {paidDonations.length} campaign{paidDonations.length !== 1 ? 's' : ''}</p>
+            </div>
           )}
         </div>
       )}
@@ -578,8 +696,8 @@ const Profile = () => {
             <div className="text-center py-8 text-gray-400">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"
                 className="mx-auto mb-3 opacity-40">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-                <polyline points="14 2 14 9 20 9"/>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                <polyline points="14 2 14 9 20 9" />
               </svg>
               <p className="text-sm mb-1">No document submitted</p>
               <p className="text-xs">Submit a document during registration to get verified.</p>
