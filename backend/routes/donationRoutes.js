@@ -60,7 +60,7 @@ router.post('/upi/create-order', protect, async (req, res) => {
       currency: 'inr',
       metadata: {
         campaignId: campaign._id.toString(),
-        donorId:    req.user._id.toString(),
+        donorId:    (req.user._id || req.user.id).toString(),
       },
       automatic_payment_methods: { enabled: true },
     })
@@ -68,7 +68,7 @@ router.post('/upi/create-order', protect, async (req, res) => {
     // Create Donation in 'created' state
     const donation = await Donation.create({
       campaign:         campaign._id,
-      donor:            req.user._id,
+      donor:            (req.user._id || req.user.id),
       paymentMethod:    'upi',
       amount,
       currency:         'INR',
@@ -196,7 +196,7 @@ router.post('/:id/refund-request', protect, async (req, res) => {
     if (!donation) return res.status(404).json({ message: 'Donation not found' })
 
     // Ownership check
-    if (donation.donor.toString() !== req.user._id.toString()) {
+    if (donation.donor.toString() !== (req.user._id || req.user.id).toString()) {
       return res.status(403).json({ message: 'Unauthorized' })
     }
 
@@ -323,7 +323,7 @@ router.post('/:id/process-refund', protect, adminOnly, async (req, res) => {
 // Donor: their donation history.
 router.get('/my', protect, async (req, res) => {
   try {
-    const donations = await Donation.find({ donor: req.user._id })
+    const donations = await Donation.find({ donor: (req.user._id || req.user.id) })
       .populate('campaign', 'title deadline paymentType')
       .sort({ createdAt: -1 })
 
