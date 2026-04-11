@@ -1,142 +1,182 @@
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useWallet } from '../context/WalletContext'
 import { useAuth } from '../context/AuthContext'
 
-const Navbar = () => {
-  const {
-    account, connectWallet, disconnectWallet,
-    isConnecting, wrongNetwork, switchNetwork
-  } = useWallet()
-  const { isAdmin, logout } = useAuth()
+export default function Navbar() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { account, connectWallet, isConnecting, disconnect } = useWallet()
+  const { user, isAdmin, logout } = useAuth()
+  const [menuOpen, setMenuOpen] = useState(false)
 
-  if (location.pathname === '/admin') return null
-  if (isAdmin) return null
-
-  const short    = (addr) => `${addr.slice(0, 6)}...${addr.slice(-4)}`
   const isActive = (path) => location.pathname === path
+
+  const navLinks = [
+    { label: 'Explore',     path: '/app' },
+    { label: 'My Campaigns', path: '/my-campaigns' },
+    { label: 'My Donations', path: '/my-donations' },
+  ]
+
+  const shortAddr = (a) => `${a.slice(0,6)}…${a.slice(-4)}`
 
   return (
     <>
-      {/* Wrong network banner */}
-      {wrongNetwork && (
-        <div className="bg-red-500 text-white text-sm text-center py-2 px-4 flex items-center justify-center gap-3">
-          Wrong network — switch to Sepolia Test Network
-          <button
-            onClick={switchNetwork}
-            className="bg-white text-red-500 text-xs font-medium px-3 py-1 rounded-lg hover:bg-red-50"
-          >
-            Switch network
-          </button>
-        </div>
-      )}
-
-      <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <nav style={{
+        background: 'rgba(253,250,245,0.92)',
+        backdropFilter: 'blur(16px)',
+        borderBottom: '1px solid var(--cream-200)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+      }}>
+        <div style={{
+          maxWidth: 1200,
+          margin: '0 auto',
+          padding: '0 1.5rem',
+          height: 64,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1.5rem',
+        }}>
 
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">CF</span>
+          <button onClick={() => navigate('/')}
+            style={{ display:'flex', alignItems:'center', gap:10, background:'none', border:'none', cursor:'pointer', padding:0 }}>
+            <div style={{
+              width: 34, height: 34,
+              background: 'linear-gradient(135deg, var(--teal-500), var(--teal-700))',
+              borderRadius: 10,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 2px 8px rgba(13,122,106,.3)',
+              flexShrink: 0,
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
             </div>
-            <span className="font-semibold text-gray-900 text-lg">FundChain</span>
-          </Link>
+            <span style={{ fontFamily: 'var(--font-serif)', fontSize: '1.2rem', color: 'var(--ink-900)', letterSpacing: '-.01em' }}>
+              FundChain
+            </span>
+          </button>
 
-          {/* Center nav links */}
-          <div className="hidden sm:flex items-center gap-1">
-            <Link to="/app"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isActive('/app') ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-50'
-              }`}>
-              Home
-            </Link>
-
-            {account && (
-              <>
-                <Link to="/profile"
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isActive('/profile') ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-50'
-                  }`}>
-                  Profile
-                </Link>
-
-                <Link to="/my-campaigns"
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isActive('/my-campaigns') ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-50'
-                  }`}>
-                  My Campaigns
-                </Link>
-
-                {/* ── My Donations link ── */}
-                <Link to="/my-donations"
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isActive('/my-donations') ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-50'
-                  }`}>
-                  My Donations
-                </Link>
-              </>
-            )}
-          </div>
-
-          {/* Right side */}
-          <div className="flex items-center gap-2">
-            {account && !wrongNetwork && (
-              <button
-                onClick={() => navigate('/campaign/create')}
-                className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+          {/* Desktop nav links */}
+          <div style={{ display:'flex', alignItems:'center', gap:4, flex:1, justifyContent:'center' }}
+            className="desktop-nav">
+            {navLinks.map(link => (
+              <button key={link.path} onClick={() => navigate(link.path)}
+                style={{
+                  background: isActive(link.path) ? 'var(--teal-50)' : 'none',
+                  border: 'none',
+                  padding: '7px 14px',
+                  borderRadius: 'var(--radius-full)',
+                  fontFamily: 'var(--font-sans)',
+                  fontSize: '.875rem',
+                  fontWeight: isActive(link.path) ? 500 : 400,
+                  color: isActive(link.path) ? 'var(--teal-600)' : 'var(--ink-500)',
+                  cursor: 'pointer',
+                  transition: 'all .15s',
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={e => { if(!isActive(link.path)) e.target.style.color = 'var(--ink-900)' }}
+                onMouseLeave={e => { if(!isActive(link.path)) e.target.style.color = 'var(--ink-500)' }}
               >
-                + New Campaign
+                {link.label}
+              </button>
+            ))}
+            {isAdmin && (
+              <button onClick={() => navigate('/admin')}
+                style={{
+                  background: 'var(--amber-50)',
+                  border: '1px solid var(--amber-100)',
+                  padding: '7px 14px',
+                  borderRadius: 'var(--radius-full)',
+                  fontFamily: 'var(--font-sans)',
+                  fontSize: '.875rem',
+                  fontWeight: 500,
+                  color: 'var(--amber-500)',
+                  cursor: 'pointer',
+                }}>
+                Admin
               </button>
             )}
-
-            {account ? (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2">
-                  <div className={`w-2 h-2 rounded-full ${wrongNetwork ? 'bg-red-500' : 'bg-green-500'}`} />
-                  <span className="text-sm font-mono text-gray-700">{short(account)}</span>
-                </div>
-                <button
-                  onClick={disconnectWallet}
-                  className="text-sm text-gray-500 hover:text-red-500 px-2 py-2 transition-colors"
-                >
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => navigate('/admin-login')}
-                  className="text-sm text-gray-600 hover:text-gray-900 font-medium px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
-                >
-                  Admin
-                </button>
-                <button
-                  onClick={() => navigate('/login')}
-                  className="text-sm text-gray-600 hover:text-gray-900 font-medium px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
-                >
-                  Login
-                </button>
-                <button
-                  onClick={connectWallet}
-                  disabled={isConnecting}
-                  className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
-                    <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
-                    <path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>
-                  </svg>
-                  {isConnecting ? 'Connecting...' : 'Connect Wallet'}
-                </button>
-              </div>
-            )}
           </div>
 
+          {/* Right actions */}
+          <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+            <button onClick={() => navigate('/campaign/create')}
+              className="btn-primary"
+              style={{ fontSize: '.8rem', padding: '8px 16px' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              New Campaign
+            </button>
+
+            {account ? (
+              <button onClick={() => navigate('/profile')}
+                style={{
+                  display:'flex', alignItems:'center', gap:8,
+                  background: 'var(--cream-100)',
+                  border: '1px solid var(--cream-200)',
+                  borderRadius: 'var(--radius-full)',
+                  padding: '6px 12px 6px 6px',
+                  cursor:'pointer',
+                  transition: 'all .15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--cream-200)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'var(--cream-100)'}>
+                <div style={{
+                  width:28, height:28, borderRadius:'50%',
+                  background: 'linear-gradient(135deg, var(--teal-500), var(--teal-700))',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  overflow:'hidden',
+                }}>
+                  {user?.profilePhoto
+                    ? <img src={user.profilePhoto} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                    : <span style={{fontFamily:'var(--font-sans)',fontSize:'.7rem',color:'#fff',fontWeight:600}}>
+                        {user?.name?.slice(0,1)?.toUpperCase() || account.slice(2,3).toUpperCase()}
+                      </span>
+                  }
+                </div>
+                <span style={{fontFamily:'var(--font-sans)',fontSize:'.8rem',color:'var(--ink-700)',fontWeight:500}}>
+                  {user?.name?.split(' ')[0] || shortAddr(account)}
+                </span>
+              </button>
+            ) : (
+              <button onClick={connectWallet} disabled={isConnecting}
+                style={{
+                  display:'flex', alignItems:'center', gap:6,
+                  background:'var(--cream-100)',
+                  border:'1px solid var(--cream-200)',
+                  borderRadius:'var(--radius-full)',
+                  padding:'8px 14px',
+                  fontFamily:'var(--font-sans)',
+                  fontSize:'.8rem',
+                  fontWeight:500,
+                  color:'var(--ink-700)',
+                  cursor:'pointer',
+                  transition:'all .15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background='var(--cream-200)'}
+                onMouseLeave={e => e.currentTarget.style.background='var(--cream-100)'}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+                  <path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>
+                </svg>
+                {isConnecting ? 'Connecting…' : 'Connect'}
+              </button>
+            )}
+          </div>
         </div>
       </nav>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .desktop-nav { display: none !important; }
+        }
+      `}</style>
     </>
   )
 }
-
-export default Navbar

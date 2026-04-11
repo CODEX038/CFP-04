@@ -1,62 +1,90 @@
-import CountdownTimer from './CountdownTimer'
-import ProgressBar from './ProgressBar'
+import { useNavigate } from 'react-router-dom'
 
-const CampaignCard = ({ campaign, onClick }) => {
-  const {
-    title,
-    description,
-    goal,
-    amountRaised,
-    raised,
-    deadline,
-    owner,
-    ownerName,
-    ownerUsername,
-    imageHash,
-    category,
-    paused,
-    paymentType,
-  } = campaign
+const fmt = (n) => {
+  const num = parseFloat(n) || 0
+  if (num >= 1e7) return `₹${(num/1e7).toFixed(1)}Cr`
+  if (num >= 1e5) return `₹${(num/1e5).toFixed(1)}L`
+  if (num >= 1e3) return `₹${(num/1e3).toFixed(1)}K`
+  return `₹${num.toLocaleString('en-IN')}`
+}
 
-  // ── Correct raised amount based on payment type ───────────────────────────
-  // Fiat campaigns: donation controller increments `raised` (in INR)
-  // ETH campaigns:  contract listener increments `amountRaised` (in ETH)
-  const isFiat       = paymentType === 'fiat'
-  const actualRaised = isFiat
-    ? parseFloat(raised       || 0)
-    : parseFloat(amountRaised || 0)
-  const actualGoal   = parseFloat(goal || 0)
-  const pct          = actualGoal > 0 ? Math.min((actualRaised / actualGoal) * 100, 100) : 0
+const fmtEth = (n) => `${parseFloat(n || 0).toFixed(3)} ETH`
 
-  const short      = (addr) => `${addr.slice(0, 6)}...${addr.slice(-4)}`
-  const isExpired  = Date.now() > deadline * 1000
-  const isGoalMet  = actualRaised >= actualGoal
+const timeLeft = (deadline) => {
+  const ms = deadline - Date.now()
+  if (ms <= 0) return { label: 'Ended', urgent: false, expired: true }
+  const d = Math.floor(ms / 86400000)
+  const h = Math.floor((ms % 86400000) / 3600000)
+  if (d > 30) return { label: `${Math.floor(d/30)}mo left`, urgent: false, expired: false }
+  if (d > 0)  return { label: `${d}d left`, urgent: d <= 3, expired: false }
+  return { label: `${h}h left`, urgent: true, expired: false }
+}
 
-  const currency       = isFiat ? 'INR' : 'ETH'
-  const currencySymbol = isFiat ? '₹'   : ''
+const CATEGORY_COLORS = {
+  medical:     { bg: '#FEF2F2', text: '#B91C1C', dot: '#EF4444' },
+  education:   { bg: '#EFF6FF', text: '#1D4ED8', dot: '#3B82F6' },
+  environment: { bg: '#F0FDF4', text: '#15803D', dot: '#22C55E' },
+  animals:     { bg: '#FFF7ED', text: '#C2410C', dot: '#F97316' },
+  community:   { bg: '#F5F3FF', text: '#6D28D9', dot: '#8B5CF6' },
+  disaster:    { bg: '#FEF9C3', text: '#A16207', dot: '#EAB308' },
+  arts:        { bg: '#FDF4FF', text: '#7E22CE', dot: '#A855F7' },
+  sports:      { bg: '#ECFDF5', text: '#065F46', dot: '#10B981' },
+}
 
-  const formatAmount = (amount) => {
-    const num = parseFloat(amount)
-    if (isFiat) return num.toLocaleString('en-IN', { maximumFractionDigits: 0 })
-    return num.toFixed(3)
-  }
+export default function CampaignCard({ campaign }) {
+  const navigate = useNavigate()
+  const isFiat  = campaign.paymentType === 'fiat'
+  const raised  = isFiat ? (campaign.raised || 0) : parseFloat(campaign.amountRaised || 0)
+  const goal    = parseFloat(campaign.goal || 0)
+  const pct     = goal > 0 ? Math.min((raised / goal) * 100, 100) : 0
+  const time    = timeLeft(campaign.deadline)
+  const cat     = (campaign.category || 'community').toLowerCase()
+  const colors  = CATEGORY_COLORS[cat] || CATEGORY_COLORS.community
+  const isVerif = campaign.verificationStatus === 'verified'
 
   return (
-    <div
-      onClick={onClick}
-      className="bg-white border border-gray-200 rounded-2xl overflow-hidden cursor-pointer hover:border-purple-300 hover:shadow-sm transition-all group"
+    <article
+      onClick={() => navigate(`/campaign/${campaign.contractAddress}`)}
+      style={{
+        background: '#fff',
+        border: '1px solid var(--cream-200)',
+        borderRadius: 'var(--radius-lg)',
+        overflow: 'hidden',
+        cursor: 'pointer',
+        transition: 'transform .2s, box-shadow .2s, border-color .2s',
+        boxShadow: 'var(--shadow-card)',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.transform = 'translateY(-3px)'
+        e.currentTarget.style.boxShadow = 'var(--shadow-md)'
+        e.currentTarget.style.borderColor = 'var(--cream-300)'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.transform = 'translateY(0)'
+        e.currentTarget.style.boxShadow = 'var(--shadow-card)'
+        e.currentTarget.style.borderColor = 'var(--cream-200)'
+      }}
     >
       {/* Image */}
-      <div className="w-full h-40 bg-gradient-to-br from-purple-50 to-purple-100 relative overflow-hidden">
-        {imageHash ? (
+      <div style={{ position:'relative', height:186, overflow:'hidden', background: 'var(--cream-100)', flexShrink:0 }}>
+        {campaign.imageHash ? (
           <img
-            src={`https://gateway.pinata.cloud/ipfs/${imageHash}`}
-            alt={title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            src={`https://gateway.pinata.cloud/ipfs/${campaign.imageHash}`}
+            alt={campaign.title}
+            style={{ width:'100%', height:'100%', objectFit:'cover', transition:'transform .35s' }}
+            onMouseEnter={e => e.target.style.transform='scale(1.04)'}
+            onMouseLeave={e => e.target.style.transform='scale(1)'}
+            loading="lazy"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1">
+          <div style={{
+            width:'100%', height:'100%',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            background: `linear-gradient(135deg, ${colors.bg}, #fff)`,
+          }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={colors.dot} strokeWidth="1" opacity=".5">
               <rect x="3" y="3" width="18" height="18" rx="3"/>
               <circle cx="8.5" cy="8.5" r="1.5"/>
               <path d="M21 15l-5-5L5 21"/>
@@ -64,84 +92,135 @@ const CampaignCard = ({ campaign, onClick }) => {
           </div>
         )}
 
-        {/* Badges */}
-        <div className="absolute top-3 left-3 flex gap-2">
-          {category && (
-            <span className="bg-white text-purple-700 text-xs font-medium px-2.5 py-1 rounded-full border border-purple-100 capitalize">
-              {category}
-            </span>
-          )}
-          {paused && (
-            <span className="bg-red-100 text-red-600 text-xs font-medium px-2.5 py-1 rounded-full">
-              Paused
-            </span>
-          )}
-          {isGoalMet && !paused && (
-            <span className="bg-green-100 text-green-700 text-xs font-medium px-2.5 py-1 rounded-full">
-              Funded
-            </span>
-          )}
-          {isExpired && !isGoalMet && !paused && (
-            <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2.5 py-1 rounded-full">
-              Expired
-            </span>
-          )}
-        </div>
-      </div>
+        {/* Overlays */}
+        <div style={{ position:'absolute', top:10, left:10, right:10, display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+          {/* Category */}
+          <span style={{
+            background: colors.bg,
+            color: colors.text,
+            fontSize: '.68rem',
+            fontWeight: 600,
+            padding: '3px 9px',
+            borderRadius: 'var(--radius-full)',
+            letterSpacing: '.03em',
+            textTransform: 'uppercase',
+            backdropFilter: 'blur(4px)',
+          }}>
+            {campaign.category || 'General'}
+          </span>
 
-      {/* Content */}
-      <div className="p-5">
-        <h3 className="font-semibold text-gray-900 text-base mb-1 line-clamp-1 group-hover:text-purple-700 transition-colors">
-          {title}
-        </h3>
-        <p className="text-gray-500 text-sm mb-4 line-clamp-2 leading-relaxed">
-          {description}
-        </p>
-
-        {/* Progress */}
-        <ProgressBar percent={pct} />
-
-        <div className="flex justify-between items-center mt-2 mb-4 text-sm">
-          <div>
-            <span className="font-semibold text-gray-900">
-              {currencySymbol}{formatAmount(actualRaised)} {currency}
-            </span>
-            <span className="text-gray-400">
-              {' '}of {currencySymbol}{formatAmount(actualGoal)} {currency}
-            </span>
-          </div>
-          <span className={`font-medium ${pct >= 100 ? 'text-green-600' : 'text-purple-600'}`}>
-            {Math.round(pct)}%
+          {/* Time */}
+          <span style={{
+            background: time.expired ? 'rgba(26,20,16,.7)' : time.urgent ? 'rgba(220,53,69,.85)' : 'rgba(26,20,16,.6)',
+            color: '#fff',
+            fontSize: '.7rem',
+            fontWeight: 500,
+            padding: '3px 9px',
+            borderRadius: 'var(--radius-full)',
+            backdropFilter: 'blur(4px)',
+          }}>
+            {time.label}
           </span>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-between items-center pt-3 border-t border-gray-100 text-xs text-gray-400">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <div className="w-5 h-5 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
-              <span className="text-purple-600 font-bold" style={{ fontSize: '9px' }}>
-                {ownerName
-                  ? ownerName.slice(0, 2).toUpperCase()
-                  : owner.slice(2, 4).toUpperCase()
-                }
-              </span>
-            </div>
-            <div className="min-w-0">
-              {ownerName ? (
-                <span className="text-gray-600 font-medium truncate">{ownerName}</span>
-              ) : (
-                <span className="font-mono truncate">{short(owner)}</span>
-              )}
-              {ownerUsername && (
-                <span className="text-purple-400 ml-1">@{ownerUsername}</span>
-              )}
-            </div>
-          </div>
-          <CountdownTimer deadline={deadline} />
+        {/* Payment type */}
+        <div style={{ position:'absolute', bottom:10, right:10 }}>
+          <span style={{
+            background: isFiat ? 'rgba(13,122,106,.85)' : 'rgba(62,36,14,.75)',
+            color:'#fff',
+            fontSize:'.68rem',
+            fontWeight:600,
+            padding:'3px 8px',
+            borderRadius:'var(--radius-full)',
+            backdropFilter:'blur(4px)',
+          }}>
+            {isFiat ? 'UPI' : 'ETH'}
+          </span>
         </div>
       </div>
-    </div>
+
+      {/* Body */}
+      <div style={{ padding:'1rem 1.1rem', flex:1, display:'flex', flexDirection:'column', gap:10 }}>
+        {/* Title */}
+        <div>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
+            <h3 style={{
+              fontFamily: 'var(--font-serif)',
+              fontSize: '1.05rem',
+              fontWeight: 400,
+              color: 'var(--ink-900)',
+              lineHeight: 1.3,
+              margin: 0,
+              flex: 1,
+            }}>
+              {campaign.title}
+            </h3>
+            {isVerif && (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{flexShrink:0,marginTop:2}}>
+                <path d="M12 2l2.4 4.9L20 8l-4 3.9.9 5.6L12 15l-4.9 2.5.9-5.6L4 8l5.6-1.1L12 2z" fill="var(--teal-500)" opacity=".2"/>
+                <path d="M9 12l2 2 4-4" stroke="var(--teal-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </div>
+          {campaign.ownerName && (
+            <p style={{ fontSize:'.75rem', color:'var(--ink-300)', marginTop:3 }}>by {campaign.ownerName}</p>
+          )}
+        </div>
+
+        {/* Progress */}
+        <div style={{ marginTop:'auto' }}>
+          <div style={{
+            height: 5,
+            background: 'var(--cream-100)',
+            borderRadius: 'var(--radius-full)',
+            overflow: 'hidden',
+            marginBottom: 7,
+          }}>
+            <div style={{
+              height:'100%',
+              width: `${pct}%`,
+              background: pct >= 100
+                ? 'linear-gradient(90deg, var(--teal-500), #22c55e)'
+                : 'linear-gradient(90deg, var(--teal-500), var(--amber-400))',
+              borderRadius: 'var(--radius-full)',
+              transition: 'width .6s cubic-bezier(.4,0,.2,1)',
+            }}/>
+          </div>
+
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
+            <div>
+              <span style={{ fontFamily:'var(--font-sans)', fontWeight:600, fontSize:'.9rem', color:'var(--teal-600)' }}>
+                {isFiat ? fmt(raised) : fmtEth(raised)}
+              </span>
+              <span style={{ fontSize:'.75rem', color:'var(--ink-300)', marginLeft:4 }}>raised</span>
+            </div>
+            <div style={{ textAlign:'right' }}>
+              <span style={{ fontSize:'.75rem', color:'var(--ink-300)' }}>
+                {pct.toFixed(0)}% of {isFiat ? fmt(goal) : fmtEth(goal)}
+              </span>
+            </div>
+          </div>
+
+          {/* Funders */}
+          {campaign.funders > 0 && (
+            <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:6 }}>
+              <div style={{ display:'flex' }}>
+                {[...Array(Math.min(campaign.funders, 3))].map((_, i) => (
+                  <div key={i} style={{
+                    width:18, height:18, borderRadius:'50%',
+                    background: `hsl(${160 + i*30}, 40%, 60%)`,
+                    border:'1.5px solid #fff',
+                    marginLeft: i === 0 ? 0 : -5,
+                  }}/>
+                ))}
+              </div>
+              <span style={{ fontSize:'.72rem', color:'var(--ink-300)' }}>
+                {campaign.funders} supporter{campaign.funders !== 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </article>
   )
 }
-
-export default CampaignCard
