@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useCampaigns } from '../hooks/useCampaigns'
 import ProgressBar from '../components/ProgressBar'
 import CountdownTimer from '../components/CountdownTimer'
+import VerificationBadge, { DocumentStatusBadge } from '../components/VerificationBadge'
 import axios from 'axios'
 
 const StatCard = ({ label, value, color }) => (
@@ -106,12 +107,6 @@ const Profile = () => {
     } catch { return dob }
   }
 
-  const docStatusColor = {
-    verified: 'text-green-600 bg-green-50 border-green-200',
-    rejected: 'text-red-600 bg-red-50 border-red-200',
-    pending:  'text-amber-600 bg-amber-50 border-amber-200',
-  }
-
   if (!account) return (
     <div className="flex flex-col items-center justify-center py-32 gap-4">
       <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center">
@@ -153,16 +148,15 @@ const Profile = () => {
                 }
               </div>
             )}
-            {displayUser?.isVerified && (
-              <div className="flex items-center justify-center mt-2">
-                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                    <path d="M20 6L9 17l-5-5"/>
-                  </svg>
-                  Verified
-                </span>
-              </div>
-            )}
+            
+            {/* Verification badge below avatar */}
+            <div className="flex items-center justify-center mt-2">
+              {displayUser?.isVerified ? (
+                <VerificationBadge user={displayUser} size="sm" />
+              ) : displayUser?.document?.status && displayUser.document.status !== 'verified' ? (
+                <DocumentStatusBadge status={displayUser.document.status} size="xs" />
+              ) : null}
+            </div>
           </div>
 
           {/* Name & details */}
@@ -372,36 +366,43 @@ const Profile = () => {
           <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-4">
             Document verification
           </h2>
-          {displayUser?.document?.hash ? (
+          {displayUser?.document?.hash || displayUser?.document?.url ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                 <div>
                   <p className="text-sm font-medium text-gray-900 capitalize">
                     {displayUser.document.type || 'Document'} submitted
                   </p>
-                  <p className="font-mono text-xs text-gray-400 mt-1">
-                    {displayUser.document.hash}
-                  </p>
+                  {displayUser.document.hash && (
+                    <p className="font-mono text-xs text-gray-400 mt-1">
+                      {displayUser.document.hash}
+                    </p>
+                  )}
                 </div>
-                <span className={`text-xs font-medium px-3 py-1.5 rounded-full border capitalize ${
-                  docStatusColor[displayUser.document.status] || docStatusColor.pending
-                }`}>
-                  {displayUser.document.status || 'Pending'}
-                </span>
+                <div className="flex items-center gap-2">
+                  {displayUser.isVerified ? (
+                    <VerificationBadge user={displayUser} size="md" />
+                  ) : (
+                    <DocumentStatusBadge status={displayUser.document.status} size="sm" />
+                  )}
+                </div>
               </div>
-              {displayUser.document.status === 'verified' && (
+              
+              {displayUser.isVerified && (
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-700">
-                  Your identity has been verified. You can now create campaigns.
+                  ✓ Your identity has been verified. You can now create campaigns.
                 </div>
               )}
+              
               {displayUser.document.status === 'rejected' && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-600">
-                  Your document was rejected. Please contact support or re-register with a valid document.
+                  ✕ Your document was rejected. Please contact support or re-register with a valid document.
                 </div>
               )}
-              {(!displayUser.document.status || displayUser.document.status === 'pending') && (
+              
+              {displayUser.document.status === 'pending' && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
-                  Your document is under review. This usually takes 1–2 business days.
+                  ⏳ Your document is under review. This usually takes 1–2 business days.
                 </div>
               )}
             </div>

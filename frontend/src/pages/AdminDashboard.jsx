@@ -191,14 +191,16 @@ const AdminDashboard = () => {
   }
 
   // ── User document verification ────────────────────────────────────────────
-  const verifyUserDocument = async (userId, status) => {
+  const verifyUserDocument = async (userId, newStatus) => {
     setActionLoading(true)
     try {
       const { data } = await axios.patch(
         `${API}/auth/users/${userId}/verify-document`,
-        { status },
+        { status: newStatus },
         { headers }
       )
+      
+      // Update user in local state
       setUsers(prev => prev.map(u => u._id === userId ? data : u))
     } catch (err) {
       console.error(err)
@@ -475,88 +477,119 @@ const AdminDashboard = () => {
                     No users found.
                   </div>
                 ) : (
-                  filteredUsers.map(u => (
-                    <div key={u._id} className="bg-white border border-gray-200 rounded-2xl p-5">
-                      {/* User info row */}
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-lg shrink-0 overflow-hidden">
-                            {u.profilePhoto
-                              ? <img src={u.profilePhoto} alt={u.name} className="w-full h-full object-cover" />
-                              : (u.name ? u.name.slice(0, 2).toUpperCase() : u.email.slice(0, 2).toUpperCase())
-                            }
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-semibold text-gray-900">{u.name || '—'}</p>
-                              {u.isVerified && (
-                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Verified</span>
-                              )}
-                              {u.document?.url && (
-                                <DocStatusBadge status={u.document?.status || 'pending'} />
-                              )}
+                  filteredUsers.map(u => {
+                    const docStatus = u.document?.status || 'pending'
+                    
+                    return (
+                      <div key={u._id} className="bg-white border border-gray-200 rounded-2xl p-5">
+                        {/* User info row */}
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-lg shrink-0 overflow-hidden">
+                              {u.profilePhoto
+                                ? <img src={u.profilePhoto} alt={u.name} className="w-full h-full object-cover" />
+                                : (u.name ? u.name.slice(0, 2).toUpperCase() : u.email.slice(0, 2).toUpperCase())
+                              }
                             </div>
-                            {u.username && <p className="text-xs text-purple-500">@{u.username}</p>}
-                            <p className="text-sm text-gray-500">{u.email}</p>
-                            {u.phone && <p className="text-xs text-gray-400">{u.phone}</p>}
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-400 shrink-0">
-                          Joined {new Date(u.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-
-                      {/* Identity document section */}
-                      {u.document?.url ? (
-                        <div className="mt-4 border-t border-gray-100 pt-4">
-                          <div className="flex items-center justify-between mb-3">
                             <div>
-                              <p className="text-xs font-semibold text-gray-700 capitalize">
-                                {u.document.type || 'Identity'} document
-                              </p>
-                              <p className="text-xs text-gray-400 mt-0.5">
-                                Submitted for identity verification
-                              </p>
-                            </div>
-                            <div className="flex gap-2">
-                              {u.document.status !== 'verified' && (
-                                <button
-                                  onClick={() => verifyUserDocument(u._id, 'verified')}
-                                  disabled={actionLoading}
-                                  className="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
-                                >
-                                  ✓ Verify user
-                                </button>
-                              )}
-                              {u.document.status !== 'rejected' && (
-                                <button
-                                  onClick={() => verifyUserDocument(u._id, 'rejected')}
-                                  disabled={actionLoading}
-                                  className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 font-medium transition-colors"
-                                >
-                                  ✕ Reject
-                                </button>
-                              )}
-                              {u.document.status === 'verified' && (
-                                <button
-                                  onClick={() => verifyUserDocument(u._id, 'pending')}
-                                  disabled={actionLoading}
-                                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 font-medium transition-colors"
-                                >
-                                  Revoke
-                                </button>
-                              )}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-semibold text-gray-900">{u.name || '—'}</p>
+                                {u.isVerified && (
+                                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                      <path d="M20 6L9 17l-5-5"/>
+                                    </svg>
+                                    Verified
+                                  </span>
+                                )}
+                                {!u.isVerified && u.document?.url && (
+                                  <DocStatusBadge status={docStatus} />
+                                )}
+                              </div>
+                              {u.username && <p className="text-xs text-purple-500">@{u.username}</p>}
+                              <p className="text-sm text-gray-500">{u.email}</p>
+                              {u.phone && <p className="text-xs text-gray-400">{u.phone}</p>}
                             </div>
                           </div>
-                          <DocumentViewer url={u.document.url} />
+                          <p className="text-xs text-gray-400 shrink-0">
+                            Joined {new Date(u.createdAt).toLocaleDateString()}
+                          </p>
                         </div>
-                      ) : (
-                        <div className="mt-3 pt-3 border-t border-gray-100">
-                          <p className="text-xs text-gray-400 italic">No identity document submitted</p>
-                        </div>
-                      )}
-                    </div>
-                  ))
+
+                        {/* Identity document section */}
+                        {u.document?.url ? (
+                          <div className="mt-4 border-t border-gray-100 pt-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div>
+                                <p className="text-xs font-semibold text-gray-700 capitalize">
+                                  {u.document.type || 'Identity'} document
+                                </p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  Submitted for identity verification
+                                </p>
+                              </div>
+                              
+                              {/* FIXED: Proper button logic based on current status */}
+                              <div className="flex gap-2">
+                                {docStatus === 'pending' && (
+                                  <>
+                                    <button
+                                      onClick={() => verifyUserDocument(u._id, 'verified')}
+                                      disabled={actionLoading}
+                                      className="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
+                                    >
+                                      ✓ Verify user
+                                    </button>
+                                    <button
+                                      onClick={() => verifyUserDocument(u._id, 'rejected')}
+                                      disabled={actionLoading}
+                                      className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 font-medium transition-colors"
+                                    >
+                                      ✕ Reject
+                                    </button>
+                                  </>
+                                )}
+                                
+                                {docStatus === 'verified' && (
+                                  <button
+                                    onClick={() => verifyUserDocument(u._id, 'pending')}
+                                    disabled={actionLoading}
+                                    className="text-xs px-3 py-1.5 rounded-lg border border-amber-200 text-amber-600 hover:bg-amber-50 font-medium transition-colors"
+                                  >
+                                    ↻ Revoke verification
+                                  </button>
+                                )}
+                                
+                                {docStatus === 'rejected' && (
+                                  <>
+                                    <button
+                                      onClick={() => verifyUserDocument(u._id, 'verified')}
+                                      disabled={actionLoading}
+                                      className="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
+                                    >
+                                      ✓ Approve now
+                                    </button>
+                                    <button
+                                      onClick={() => verifyUserDocument(u._id, 'pending')}
+                                      disabled={actionLoading}
+                                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 font-medium transition-colors"
+                                    >
+                                      ↻ Reset to pending
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <DocumentViewer url={u.document.url} />
+                          </div>
+                        ) : (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            <p className="text-xs text-gray-400 italic">No identity document submitted</p>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
                 )}
               </div>
             )}

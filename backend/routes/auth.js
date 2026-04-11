@@ -1,66 +1,177 @@
 /**
- * auth.js (routes)
- * Cloudinary upload routes for user documents and profile photos.
+ * routes/auth.js
+ * Authentication, current-user, and admin user-management routes.
+ *
+ * Endpoints:
+ *   POST  /api/auth/register                        → register new user
+ *   POST  /api/auth/login                           → login, returns JWT
+ *   GET   /api/auth/me                              → get current user (protected)
+ *   GET   /api/auth/users                           → list all users (admin only)
+ *   PATCH /api/auth/users/:userId/verify-document   → approve/reject user doc (admin only)
  */
 
-import { Router } from 'express'
-import multer     from 'multer'
-import os         from 'os'
-import path       from 'path'
-import {
-  register,
-  login,
-  getMe,
-  getAllUsers,
-  verifyDocument,
-  uploadUserDocument,
-  uploadProfilePhoto,
-} from '../controllers/authController.js'
+import { Router }  from 'express'
+import bcrypt      from 'bcryptjs'
+import jwt         from 'jsonwebtoken'
+import User        from '../models/User.js'
 import { protect, adminOnly } from '../middleware/auth.js'
 
 const router = Router()
 
-// ── Multer: saves to OS temp dir, then Cloudinary picks it up ────────────────
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, os.tmpdir()),
-    filename: (req, file, cb) => {
-      const ext  = path.extname(file.originalname)
-      const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`
-      cb(null, name)
-    },
-  }),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = [
-      'image/jpeg', 'image/png', 'image/jpg', 'image/webp',
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    ]
-    cb(null, allowed.includes(file.mimetype))
-  },
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const signToken = (userId) =>
+  jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  })
+
+// ── POST /register ────────────────────────────────────────────────────────────
+router.post('/register', async (req, res) => {
+  try {
+    const { name, email, password, phone, walletAddress } = req.body
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'name, email and password are required' })
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase() })
+    if (existing) {
+      return res.status(409).json({ message: 'Email already registered' })
+    }
+
+    const hashed = await bcrypt.hash(password, 12)
+
+    const user = await User.create({
+      name,
+      email:         email.toLowerCase(),
+      password:      hashed,
+      phone:         phone        || '',
+      walletAddress: walletAddress || '',
+    })
+
+    const token = signToken(user._id)
+
+    res.status(201).json({
+      token,
+      user: {
+        _id:          user._id,
+        name:         user.name,
+        email:        user.email,
+        phone:        user.phone,
+        walletAddress: user.walletAddress,
+        isVerified:   user.isVerified,
+        role:         user.role,
+      },
+    })
+  } catch (err) {
+    console.error('[Auth] register error:', err.message)
+    res.status(500).json({ message: err.message })
+  }
 })
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
-// FIX: upload.fields() added so req.files is populated in register()
-router.post(
-  '/register',
-  upload.fields([
-    { name: 'profilePhoto', maxCount: 1 },
-    { name: 'document',     maxCount: 1 },
-  ]),
-  register
-)
-router.post('/login',    login)
-router.get ('/me',       protect, getMe)
+// ── POST /login ───────────────────────────────────────────────────────────────
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body
 
-// ── Admin ─────────────────────────────────────────────────────────────────────
-router.get   ('/users',                       protect, adminOnly, getAllUsers)
-router.patch ('/users/:id/verify-document',   protect, adminOnly, verifyDocument)
+    if (!email || !password) {
+      return res.status(400).json({ message: 'email and password are required' })
+    }
 
-// ── User uploads (Cloudinary) ─────────────────────────────────────────────────
-router.post('/upload-document', protect, upload.single('document'),     uploadUserDocument)
-router.post('/upload-photo',    protect, upload.single('profilePhoto'), uploadProfilePhoto)
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password')
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid email or password' })
+    }
+
+    const match = await bcrypt.compare(password, user.password)
+    if (!match) {
+      return res.status(401).json({ message: 'Invalid email or password' })
+    }
+
+    const token = signToken(user._id)
+
+    res.json({
+      token,
+      user: {
+        _id:          user._id,
+        name:         user.name,
+        email:        user.email,
+        phone:        user.phone,
+        walletAddress: user.walletAddress,
+        isVerified:   user.isVerified,
+        role:         user.role,
+      },
+    })
+  } catch (err) {
+    console.error('[Auth] login error:', err.message)
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// ── GET /me ───────────────────────────────────────────────────────────────────
+// Returns the currently logged-in user's profile (no password).
+router.get('/me', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('-password')
+    if (!user) return res.status(404).json({ message: 'User not found' })
+    res.json(user)
+  } catch (err) {
+    console.error('[Auth] /me error:', err.message)
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// ── GET /users ────────────────────────────────────────────────────────────────
+// Admin: list all users sorted newest first, passwords excluded.
+router.get('/users', protect, adminOnly, async (req, res) => {
+  try {
+    const users = await User.find()
+      .select('-password')
+      .sort({ createdAt: -1 })
+    res.json(users)
+  } catch (err) {
+    console.error('[Auth] GET /users error:', err.message)
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// ── PATCH /users/:userId/verify-document ─────────────────────────────────────
+// Admin: approve or reject a user's uploaded identity document.
+// Body: { status: 'verified' | 'rejected' | 'pending' }
+//
+// IMPORTANT: user.isVerified is kept in sync with document.status —
+// a user is only considered verified when their document is 'verified'.
+router.patch('/users/:userId/verify-document', protect, adminOnly, async (req, res) => {
+  try {
+    const { userId } = req.params
+    const { status } = req.body
+
+    if (!['verified', 'rejected', 'pending'].includes(status)) {
+      return res.status(400).json({ message: 'status must be: verified, rejected, or pending' })
+    }
+
+    const user = await User.findById(userId)
+    if (!user) return res.status(404).json({ message: 'User not found' })
+
+    if (!user.document?.url) {
+      return res.status(400).json({ message: 'User has no document to verify' })
+    }
+
+    // Sync both fields atomically
+    user.document.status = status
+    user.isVerified       = status === 'verified'
+
+    await user.save()
+
+    res.json({
+      message:    `Document ${status} successfully`,
+      userId:     user._id,
+      isVerified: user.isVerified,
+      document:   user.document,
+    })
+  } catch (err) {
+    console.error('[Auth] verify-document error:', err.message)
+    res.status(500).json({ message: err.message })
+  }
+})
 
 export default router
