@@ -5,15 +5,13 @@ import axios from 'axios'
 import ProgressBar from '../components/ProgressBar'
 import RefundManagementPanel from '../components/RefundManagementPanel'
 
-const API       = import.meta.env.VITE_API_URL
-// ── FIX: derive backend base URL from VITE_API_URL (strip /api suffix) ────────
-const BASE_URL  = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api$/, '')
+const API      = import.meta.env.VITE_API_URL
+const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api$/, '')
 
-// ── FIX: always resolve doc URLs to the backend, not the frontend ─────────────
 const resolveDocUrl = (url) => {
   if (!url) return ''
-  if (url.startsWith('http://') || url.startsWith('https://')) return url  // Cloudinary / absolute
-  return `${BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`              // local relative path
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  return `${BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`
 }
 
 const DocumentViewer = ({ url }) => {
@@ -213,6 +211,7 @@ const AdminDashboard = () => {
   const totalRaised         = campaigns.reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0)
   const activeCamps         = campaigns.filter(c => !c.paused && Date.now() < c.deadline * 1000).length
   const pendingCampaignDocs = campaigns.filter(c => c.verificationStatus === 'pending' && c.documents?.length > 0).length
+  const pendingUserDocs     = users.filter(u => u.document?.url && (!u.document?.status || u.document?.status === 'pending')).length
 
   // ── Filtered lists ────────────────────────────────────────────────────────
   const filteredCampaigns = campaigns.filter(c => {
@@ -228,7 +227,6 @@ const AdminDashboard = () => {
     return true
   })
 
-  // Campaigns with documents awaiting review
   const campaignsWithDocs = campaigns.filter(c => {
     if (!c.documents?.length) return false
     const q     = search.toLowerCase()
@@ -237,7 +235,7 @@ const AdminDashboard = () => {
     if (docFilter === 'pending')  return c.verificationStatus === 'pending'
     if (docFilter === 'verified') return c.verificationStatus === 'verified'
     if (docFilter === 'rejected') return c.verificationStatus === 'rejected'
-    return true  // 'all'
+    return true
   })
 
   const filteredUsers = users.filter(u => {
@@ -246,6 +244,7 @@ const AdminDashboard = () => {
     if (!match) return false
     if (userFilter === 'verified')   return u.isVerified
     if (userFilter === 'unverified') return !u.isVerified
+    if (userFilter === 'doc-pending') return u.document?.url && (!u.document?.status || u.document?.status === 'pending')
     return true
   })
 
@@ -267,17 +266,17 @@ const AdminDashboard = () => {
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} />
           <StatCard label="Total users" value={users.length} color="bg-amber-100"
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>} />
-          <StatCard label="Pending docs" value={pendingCampaignDocs} color="bg-red-100"
+          <StatCard label="Pending docs" value={pendingCampaignDocs + pendingUserDocs} color="bg-red-100"
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>} />
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 mb-5 w-fit">
           {[
-            { key: 'campaigns', label: 'Campaigns', count: campaigns.length,     badge: false },
-            { key: 'users',     label: 'Users',     count: users.length,         badge: false },
-            { key: 'documents', label: 'Documents', count: pendingCampaignDocs,  badge: true  },
-            { key: 'refunds',   label: 'Refunds',   count: 0,                    badge: false },
+            { key: 'campaigns', label: 'Campaigns', count: campaigns.length,                      badge: false },
+            { key: 'users',     label: 'Users',     count: users.length,                          badge: false },
+            { key: 'documents', label: 'Documents', count: pendingCampaignDocs,                   badge: true  },
+            { key: 'refunds',   label: 'Refunds',   count: 0,                                     badge: false },
           ].map(t => (
             <button key={t.key} onClick={() => { setTab(t.key); setSearch('') }}
               className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
@@ -311,11 +310,11 @@ const AdminDashboard = () => {
             )}
             {tab === 'users' && (
               <div className="flex gap-2 flex-wrap">
-                {['all', 'verified', 'unverified'].map(f => (
+                {['all', 'verified', 'unverified', 'doc-pending'].map(f => (
                   <button key={f} onClick={() => setUserFilter(f)}
                     className={`px-3 py-2 rounded-lg text-xs font-medium capitalize transition-colors ${
                       userFilter === f ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}>{f}</button>
+                    }`}>{f === 'doc-pending' ? 'Pending docs' : f}</button>
                 ))}
               </div>
             )}
@@ -451,8 +450,6 @@ const AdminDashboard = () => {
                           )}
                         </div>
                       </div>
-
-                      {/* Documents grid */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {c.documents.map(doc => (
                           <div key={doc.docId} className="border border-gray-200 rounded-xl p-3">
@@ -460,7 +457,6 @@ const AdminDashboard = () => {
                               <p className="text-xs font-semibold text-gray-800">{doc.name}</p>
                               <DocStatusBadge status={doc.status} />
                             </div>
-                            {/* ── FIX: DocumentViewer now resolves relative URLs to backend port ── */}
                             <DocumentViewer url={doc.url} />
                           </div>
                         ))}
@@ -475,28 +471,90 @@ const AdminDashboard = () => {
             {tab === 'users' && (
               <div className="space-y-3">
                 {filteredUsers.length === 0 ? (
-                  <div className="text-center py-16 text-gray-400 text-sm bg-white border border-gray-200 rounded-2xl">No users found.</div>
+                  <div className="text-center py-16 text-gray-400 text-sm bg-white border border-gray-200 rounded-2xl">
+                    No users found.
+                  </div>
                 ) : (
                   filteredUsers.map(u => (
                     <div key={u._id} className="bg-white border border-gray-200 rounded-2xl p-5">
+                      {/* User info row */}
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-lg shrink-0">
-                            {u.name ? u.name.slice(0, 2).toUpperCase() : u.email.slice(0, 2).toUpperCase()}
+                          <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-lg shrink-0 overflow-hidden">
+                            {u.profilePhoto
+                              ? <img src={u.profilePhoto} alt={u.name} className="w-full h-full object-cover" />
+                              : (u.name ? u.name.slice(0, 2).toUpperCase() : u.email.slice(0, 2).toUpperCase())
+                            }
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-semibold text-gray-900">{u.name || '—'}</p>
                               {u.isVerified && (
                                 <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Verified</span>
                               )}
+                              {u.document?.url && (
+                                <DocStatusBadge status={u.document?.status || 'pending'} />
+                              )}
                             </div>
                             {u.username && <p className="text-xs text-purple-500">@{u.username}</p>}
                             <p className="text-sm text-gray-500">{u.email}</p>
+                            {u.phone && <p className="text-xs text-gray-400">{u.phone}</p>}
                           </div>
                         </div>
-                        <p className="text-xs text-gray-400">Joined {new Date(u.createdAt).toLocaleDateString()}</p>
+                        <p className="text-xs text-gray-400 shrink-0">
+                          Joined {new Date(u.createdAt).toLocaleDateString()}
+                        </p>
                       </div>
+
+                      {/* Identity document section */}
+                      {u.document?.url ? (
+                        <div className="mt-4 border-t border-gray-100 pt-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <p className="text-xs font-semibold text-gray-700 capitalize">
+                                {u.document.type || 'Identity'} document
+                              </p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                Submitted for identity verification
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              {u.document.status !== 'verified' && (
+                                <button
+                                  onClick={() => verifyUserDocument(u._id, 'verified')}
+                                  disabled={actionLoading}
+                                  className="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
+                                >
+                                  ✓ Verify user
+                                </button>
+                              )}
+                              {u.document.status !== 'rejected' && (
+                                <button
+                                  onClick={() => verifyUserDocument(u._id, 'rejected')}
+                                  disabled={actionLoading}
+                                  className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 font-medium transition-colors"
+                                >
+                                  ✕ Reject
+                                </button>
+                              )}
+                              {u.document.status === 'verified' && (
+                                <button
+                                  onClick={() => verifyUserDocument(u._id, 'pending')}
+                                  disabled={actionLoading}
+                                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 font-medium transition-colors"
+                                >
+                                  Revoke
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <DocumentViewer url={u.document.url} />
+                        </div>
+                      ) : (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <p className="text-xs text-gray-400 italic">No identity document submitted</p>
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
