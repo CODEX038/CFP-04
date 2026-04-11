@@ -13,6 +13,22 @@ function decodeToken(t) {
   }
 }
 
+// Checks all the places the admin flag could live:
+//   data.isAdmin (top-level)  → some backends
+//   data.user.isAdmin         → nested user object
+//   data.user.role === 'admin'→ role-string style  ← most likely your case
+//   payload.isAdmin / payload.role in JWT
+function resolveIsAdmin(data, payload) {
+  return (
+    data?.isAdmin                      ||   // top-level boolean
+    data?.user?.isAdmin                ||   // nested boolean
+    data?.user?.role === 'admin'       ||   // nested role string  ← FIX
+    payload?.isAdmin                   ||   // JWT boolean
+    payload?.role === 'admin'          ||   // JWT role string
+    false
+  )
+}
+
 function rehydrateUser() {
   try {
     const t = localStorage.getItem('admin_token')
@@ -20,10 +36,7 @@ function rehydrateUser() {
     const payload = decodeToken(t)
     if (!payload) return null
     const stored = localStorage.getItem('user_profile')
-    if (stored) {
-      return { ...payload, ...JSON.parse(stored) }
-    }
-    return payload
+    return stored ? { ...payload, ...JSON.parse(stored) } : payload
   } catch {
     return null
   }
@@ -36,7 +49,17 @@ export const AuthProvider = ({ children }) => {
     try {
       const t = localStorage.getItem('admin_token')
       if (!t) return false
-      return decodeToken(t)?.isAdmin || false
+      const payload = decodeToken(t)
+      const stored  = localStorage.getItem('user_profile')
+      const profile = stored ? JSON.parse(stored) : {}
+      // Check stored profile first (most complete), then JWT payload
+      return (
+        profile?.isAdmin              ||
+        profile?.role === 'admin'     ||
+        payload?.isAdmin              ||
+        payload?.role === 'admin'     ||
+        false
+      )
     } catch { return false }
   })
 
@@ -46,15 +69,18 @@ export const AuthProvider = ({ children }) => {
     const t       = data.token
     const payload = decodeToken(t)
 
+    // ✅ FIXED: resolveIsAdmin checks all possible locations
+    const adminFlag = resolveIsAdmin(data, payload)
+
     const fullUser = {
       ...payload,
-      id:            data.user?._id          || data.user?.id       || payload?.id  || payload?._id,
-      name:          data.user?.name         || payload?.name       || '',
-      username:      data.user?.username     || payload?.username   || '',
-      email:         data.user?.email        || payload?.email      || email,
-      phone:         data.user?.phone        || payload?.phone      || '',
-      isAdmin:       data.isAdmin            || payload?.isAdmin    || false,
-      // ✅ FIX: always store verification flags from server response
+      id:            data.user?._id          || data.user?.id     || payload?.id  || payload?._id,
+      name:          data.user?.name         || payload?.name     || '',
+      username:      data.user?.username     || payload?.username || '',
+      email:         data.user?.email        || payload?.email    || email,
+      phone:         data.user?.phone        || payload?.phone    || '',
+      role:          data.user?.role         || payload?.role     || '',
+      isAdmin:       adminFlag,
       emailVerified: data.user?.emailVerified ?? payload?.emailVerified ?? false,
       phoneVerified: data.user?.phoneVerified ?? payload?.phoneVerified ?? false,
       isVerified:    data.user?.isVerified    ?? payload?.isVerified    ?? false,
@@ -65,9 +91,8 @@ export const AuthProvider = ({ children }) => {
 
     setToken(t)
     setUser(fullUser)
-    setIsAdmin(fullUser.isAdmin)
+    setIsAdmin(adminFlag)
 
-    // ✅ Return fullUser so callers can check verification status immediately
     return fullUser
   }
 
