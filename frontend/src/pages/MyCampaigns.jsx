@@ -7,432 +7,312 @@ import { CAMPAIGN_ABI } from '../utils/constants'
 import ProgressBar from '../components/ProgressBar'
 import CountdownTimer from '../components/CountdownTimer'
 
+const STATUS_STYLE = {
+  active:   { bg: '#f3f0ff', color: '#6d28d9' },
+  funded:   { bg: '#f0fdf4', color: '#15803d' },
+  expiring: { bg: '#fff7ed', color: '#c2410c' },
+  expired:  { bg: '#f9fafb', color: '#6b7280' },
+  paused:   { bg: '#fef2f2', color: '#dc2626' },
+}
+
 const StatusBadge = ({ status }) => {
-  const styles = {
-    active:   'bg-purple-100 text-purple-700',
-    funded:   'bg-green-100 text-green-700',
-    expiring: 'bg-orange-100 text-orange-700',
-    expired:  'bg-gray-100 text-gray-600',
-    paused:   'bg-red-100 text-red-600',
-  }
-
-  const labels = {
-    active:   'Active',
-    funded:   'Funded',
-    expiring: 'Expiring',
-    expired:  'Expired',
-    paused:   'Paused',
-  }
-
+  const s = STATUS_STYLE[status] || STATUS_STYLE.active
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-medium ${styles[status]}`}>
-      {labels[status]}
-    </span>
+    <span style={{
+      background: s.bg, color: s.color,
+      fontFamily: 'var(--font-sans)', fontSize: '.72rem', fontWeight: 600,
+      padding: '3px 10px', borderRadius: 'var(--radius-full)', textTransform: 'capitalize',
+    }}>{status}</span>
   )
 }
 
-const MyCampaigns = () => {
+const getCampaignStatus = (c) => {
+  if (c.paused) return 'paused'
+  const deadlineMs = c.deadline > 1e12 ? c.deadline : c.deadline * 1000
+  const pct = parseFloat(c.amountRaised) / parseFloat(c.goal)
+  if (pct >= 1) return 'funded'
+  if (Date.now() >= deadlineMs) return 'expired'
+  if ((deadlineMs - Date.now()) < 864e5) return 'expiring'
+  return 'active'
+}
+
+export default function MyCampaigns() {
   const navigate = useNavigate()
   const { account, signer } = useWallet()
-  const { campaigns: allCampaigns, loading } = useCampaigns()
-
-  const [activeTab, setActiveTab] = useState('all')
+  const { campaigns: all, loading } = useCampaigns()
+  const [activeTab, setActiveTab]         = useState('all')
   const [actionLoading, setActionLoading] = useState({})
 
-  // Filter campaigns owned by current user
-  const myCampaigns = allCampaigns.filter(
-    c => c.owner.toLowerCase() === account?.toLowerCase()
-  )
+  const mine = all.filter(c => c.owner?.toLowerCase() === account?.toLowerCase())
 
-  // Calculate stats with multi-currency support
-  const calculateStats = () => {
-    const ethCampaigns = myCampaigns.filter(c => c.paymentType !== 'fiat')
-    const fiatCampaigns = myCampaigns.filter(c => c.paymentType === 'fiat')
+  const ethMine  = mine.filter(c => c.paymentType !== 'fiat')
+  const fiatMine = mine.filter(c => c.paymentType === 'fiat')
+  const totalEth = ethMine.reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0)
+  const totalInr = fiatMine.reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0)
+  const activeCnt = mine.filter(c => !c.paused && Date.now() < (c.deadline > 1e12 ? c.deadline : c.deadline * 1000)).length
+  const fundedCnt = mine.filter(c => parseFloat(c.amountRaised || 0) >= parseFloat(c.goal)).length
 
-    const totalRaisedETH = ethCampaigns.reduce(
-      (sum, c) => sum + parseFloat(c.amountRaised || 0),
-      0
-    )
-
-    const totalRaisedINR = fiatCampaigns.reduce(
-      (sum, c) => sum + parseFloat(c.amountRaised || 0),
-      0
-    )
-
-    const activeCampaigns = myCampaigns.filter(
-      c => !c.paused && Date.now() < c.deadline
-    ).length
-
-    const fundedCampaigns = myCampaigns.filter(
-      c => parseFloat(c.amountRaised || 0) >= parseFloat(c.goal)
-    ).length
-
-    return { totalRaisedETH, totalRaisedINR, activeCampaigns, fundedCampaigns }
+  const tabs = {
+    all:      mine,
+    active:   mine.filter(c => getCampaignStatus(c) === 'active'),
+    funded:   mine.filter(c => getCampaignStatus(c) === 'funded'),
+    expiring: mine.filter(c => getCampaignStatus(c) === 'expiring'),
+    expired:  mine.filter(c => getCampaignStatus(c) === 'expired'),
   }
 
-  const stats = calculateStats()
-
-  // Categorize campaigns
-  const categorizedCampaigns = {
-    all: myCampaigns,
-    active: myCampaigns.filter(c => !c.paused && Date.now() < c.deadline && parseFloat(c.amountRaised) < parseFloat(c.goal)),
-    funded: myCampaigns.filter(c => parseFloat(c.amountRaised) >= parseFloat(c.goal)),
-    expiring: myCampaigns.filter(c => {
-      const timeLeft = c.deadline - Date.now()
-      const hoursLeft = timeLeft / (1000 * 60 * 60)
-      return hoursLeft > 0 && hoursLeft <= 24 && parseFloat(c.amountRaised) < parseFloat(c.goal)
-    }),
-    expired: myCampaigns.filter(c => Date.now() >= c.deadline && parseFloat(c.amountRaised) < parseFloat(c.goal)),
-  }
-
-  // Get campaign status
-  const getCampaignStatus = (campaign) => {
-    if (campaign.paused) return 'paused'
-    if (parseFloat(campaign.amountRaised) >= parseFloat(campaign.goal)) return 'funded'
-    if (Date.now() >= campaign.deadline) return 'expired'
-    
-    const timeLeft = campaign.deadline - Date.now()
-    const hoursLeft = timeLeft / (1000 * 60 * 60)
-    if (hoursLeft <= 24) return 'expiring'
-    
-    return 'active'
-  }
-
-  // Handle pause/resume
   const handlePause = async (campaign) => {
-    if (campaign.paymentType === 'fiat') {
-      alert('Fiat campaigns cannot be paused from the frontend yet.')
-      return
-    }
-
-    if (!signer) {
-      alert('Please connect your wallet')
-      return
-    }
-
+    if (!signer || campaign.paymentType === 'fiat') return alert('Not supported')
     try {
-      setActionLoading(prev => ({ ...prev, [campaign.contractAddress]: 'pausing' }))
-      
-      // Create contract instance directly
+      setActionLoading(p => ({ ...p, [campaign.contractAddress]: 'pausing' }))
       const contract = new ethers.Contract(campaign.contractAddress, CAMPAIGN_ABI, signer)
-      
-      // Call pause or resume based on current state
       const tx = campaign.paused ? await contract.resume() : await contract.pause()
       await tx.wait()
-      
-      alert(`Campaign ${campaign.paused ? 'resumed' : 'paused'} successfully!`)
       window.location.reload()
-    } catch (error) {
-      console.error('Error pausing/resuming campaign:', error)
-      alert(`Failed to ${campaign.paused ? 'resume' : 'pause'} campaign: ${error.message}`)
-    } finally {
-      setActionLoading(prev => ({ ...prev, [campaign.contractAddress]: null }))
-    }
+    } catch (e) { alert(e.message) }
+    finally { setActionLoading(p => ({ ...p, [campaign.contractAddress]: null })) }
   }
 
-  // Handle claim funds
   const handleClaim = async (campaign) => {
-    if (campaign.paymentType === 'fiat') {
-      alert('Fiat campaign funds are processed separately. Contact support.')
-      return
-    }
-
-    if (parseFloat(campaign.amountRaised) < parseFloat(campaign.goal)) {
-      alert('Goal not reached yet!')
-      return
-    }
-
-    if (campaign.claimed) {
-      alert('Funds already claimed!')
-      return
-    }
-
-    if (!signer) {
-      alert('Please connect your wallet')
-      return
-    }
-
+    if (!signer) return
     try {
-      setActionLoading(prev => ({ ...prev, [campaign.contractAddress]: 'claiming' }))
-      
-      // Create contract instance directly
+      setActionLoading(p => ({ ...p, [campaign.contractAddress]: 'claiming' }))
       const contract = new ethers.Contract(campaign.contractAddress, CAMPAIGN_ABI, signer)
-      
       const tx = await contract.claim()
       await tx.wait()
-      
-      alert('Funds claimed successfully!')
       window.location.reload()
-    } catch (error) {
-      console.error('Error claiming funds:', error)
-      alert(`Failed to claim funds: ${error.message}`)
-    } finally {
-      setActionLoading(prev => ({ ...prev, [campaign.contractAddress]: null }))
-    }
+    } catch (e) { alert(e.message) }
+    finally { setActionLoading(p => ({ ...p, [campaign.contractAddress]: null })) }
   }
 
-  if (!account) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Connect Your Wallet</h2>
-          <p className="text-gray-500">Please connect your wallet to view your campaigns</p>
-        </div>
+  if (!account) return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'60vh', gap:16 }}>
+      <div style={{ width:64, height:64, borderRadius:'50%', background:'var(--teal-50)',
+        display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--teal-500)" strokeWidth="1.5">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
       </div>
-    )
-  }
+      <p style={{ fontFamily:'var(--font-sans)', color:'var(--ink-300)' }}>Connect your wallet to view your campaigns.</p>
+    </div>
+  )
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Campaigns</h1>
-          <p className="text-gray-500">Manage and track your fundraising campaigns</p>
-        </div>
+    <div style={{ maxWidth:1100, margin:'0 auto', padding:'2rem 1.5rem 5rem' }}>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-2xl p-6 border border-gray-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-500 text-sm">Active Campaigns</span>
-              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                <span className="text-purple-600 text-xl">📊</span>
+      {/* Header */}
+      <div style={{ marginBottom:'2rem' }}>
+        <h1 style={{ fontFamily:'var(--font-serif)', fontSize:'2rem', fontWeight:400, color:'var(--ink-900)', marginBottom:'.35rem' }}>
+          My Campaigns
+        </h1>
+        <p style={{ fontFamily:'var(--font-sans)', color:'var(--ink-300)', fontSize:'.9rem' }}>
+          Manage and track your fundraising campaigns
+        </p>
+      </div>
+
+      {/* Stat cards */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:'1.25rem', marginBottom:'2rem' }}>
+        {[
+          { label:'Active Campaigns', value:activeCnt, icon:'📊', color:'var(--ink-900)' },
+          { label:'Funded',           value:fundedCnt, icon:'✓',   color:'#15803d' },
+          { label:'Total Raised',     valueNode: (
+              <div>
+                {totalEth > 0 && <p style={{ fontFamily:'var(--font-serif)', fontSize:'1.6rem', color:'var(--ink-900)', lineHeight:1 }}>{totalEth.toFixed(3)} ETH</p>}
+                {totalInr > 0 && <p style={{ fontFamily:'var(--font-serif)', fontSize:'1.6rem', color:'var(--ink-900)', lineHeight:1 }}>₹{totalInr.toLocaleString('en-IN')}</p>}
+                {!totalEth && !totalInr && <p style={{ fontFamily:'var(--font-serif)', fontSize:'1.6rem', color:'var(--ink-900)', lineHeight:1 }}>0.00</p>}
               </div>
+            ), icon:'💰', color:'var(--ink-900)' },
+        ].map((s, i) => (
+          <div key={i} style={{
+            background:'#fff', border:'1px solid var(--cream-200)',
+            borderRadius:'var(--radius-lg)', padding:'1.5rem',
+            boxShadow:'var(--shadow-sm)',
+          }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'.75rem' }}>
+              <span style={{ fontFamily:'var(--font-sans)', fontSize:'.875rem', color:'var(--ink-300)' }}>{s.label}</span>
+              <div style={{
+                width:40, height:40, borderRadius:'50%', background:'var(--cream-100)',
+                display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem',
+              }}>{s.icon}</div>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{stats.activeCampaigns}</p>
+            {s.valueNode || (
+              <p style={{ fontFamily:'var(--font-serif)', fontSize:'1.8rem', color: s.color, lineHeight:1 }}>{s.value}</p>
+            )}
           </div>
+        ))}
+      </div>
 
-          <div className="bg-white rounded-2xl p-6 border border-gray-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-500 text-sm">Funded</span>
-              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                <span className="text-green-600 text-xl">✓</span>
-              </div>
-            </div>
-            <p className="text-3xl font-bold text-green-600">{stats.fundedCampaigns}</p>
-          </div>
+      {/* Tabs */}
+      <div style={{
+        background:'#fff', border:'1px solid var(--cream-200)',
+        borderRadius:'var(--radius-lg)', padding:8,
+        display:'flex', gap:4, overflowX:'auto', marginBottom:'1.25rem',
+        boxShadow:'var(--shadow-sm)',
+      }}>
+        {Object.entries(tabs).map(([key, list]) => (
+          <button key={key} onClick={() => setActiveTab(key)} style={{
+            padding:'8px 16px', borderRadius:'var(--radius-md)', border:'none', cursor:'pointer',
+            fontFamily:'var(--font-sans)', fontSize:'.85rem', fontWeight:500,
+            whiteSpace:'nowrap', transition:'all .15s',
+            ...(activeTab === key
+              ? { background:'linear-gradient(135deg,var(--teal-500),var(--teal-700))', color:'#fff', boxShadow:'0 2px 8px rgba(13,122,106,.3)' }
+              : { background:'transparent', color:'var(--ink-500)' })
+          }}>
+            {key.charAt(0).toUpperCase() + key.slice(1)} ({list.length})
+          </button>
+        ))}
+      </div>
 
-          <div className="bg-white rounded-2xl p-6 border border-gray-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-500 text-sm">Total Raised</span>
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <span className="text-blue-600 text-xl">💰</span>
-              </div>
-            </div>
-            <div className="space-y-1">
-              {stats.totalRaisedETH > 0 && (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.totalRaisedETH.toFixed(3)} ETH
-                </p>
-              )}
-              {stats.totalRaisedINR > 0 && (
-                <p className="text-2xl font-bold text-gray-900">
-                  ₹{stats.totalRaisedINR.toLocaleString('en-IN')}
-                </p>
-              )}
-              {stats.totalRaisedETH === 0 && stats.totalRaisedINR === 0 && (
-                <p className="text-2xl font-bold text-gray-900">0.00</p>
-              )}
-            </div>
-          </div>
+      {/* Campaign list */}
+      {loading ? (
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'5rem', gap:16 }}>
+          <div className="spinner"/>
+          <p style={{ fontFamily:'var(--font-sans)', color:'var(--ink-300)', fontSize:'.875rem' }}>Loading campaigns...</p>
         </div>
-
-        {/* Tabs */}
-        <div className="bg-white rounded-2xl border border-gray-200 mb-6">
-          <div className="flex gap-2 p-2 overflow-x-auto">
-            {[
-              { key: 'all', label: 'All', count: categorizedCampaigns.all.length },
-              { key: 'active', label: 'Active', count: categorizedCampaigns.active.length },
-              { key: 'funded', label: 'Funded', count: categorizedCampaigns.funded.length },
-              { key: 'expiring', label: 'Expiring', count: categorizedCampaigns.expiring.length },
-              { key: 'expired', label: 'Expired', count: categorizedCampaigns.expired.length },
-            ].map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-2 rounded-xl font-medium text-sm whitespace-nowrap transition-all ${
-                  activeTab === tab.key
-                    ? 'bg-purple-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {tab.label} ({tab.count})
-              </button>
-            ))}
-          </div>
+      ) : tabs[activeTab].length === 0 ? (
+        <div style={{
+          background:'#fff', border:'1px solid var(--cream-200)',
+          borderRadius:'var(--radius-xl)', padding:'4rem', textAlign:'center',
+          boxShadow:'var(--shadow-sm)',
+        }}>
+          <div style={{ fontSize:'3.5rem', marginBottom:'1rem' }}>📭</div>
+          <h3 style={{ fontFamily:'var(--font-serif)', fontSize:'1.3rem', color:'var(--ink-700)', marginBottom:'.5rem' }}>
+            No campaigns found
+          </h3>
+          <p style={{ fontFamily:'var(--font-sans)', color:'var(--ink-300)', fontSize:'.875rem', marginBottom:'1.5rem' }}>
+            {activeTab === 'all' ? "You haven't created any campaigns yet" : `No ${activeTab} campaigns`}
+          </p>
+          <button onClick={() => navigate('/campaign/create')} className="btn-primary">
+            + Create Campaign
+          </button>
         </div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
+          {tabs[activeTab].map(campaign => {
+            const status = getCampaignStatus(campaign)
+            const isFiat = campaign.paymentType === 'fiat'
+            const pct    = Math.min((parseFloat(campaign.amountRaised || 0) / parseFloat(campaign.goal || 1)) * 100, 100)
+            const fmt    = n => isFiat
+              ? `₹${parseFloat(n).toLocaleString('en-IN', { maximumFractionDigits:0 })}`
+              : `${parseFloat(n).toFixed(4)} ETH`
 
-        {/* Campaign List */}
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-            <p className="text-gray-500 mt-4">Loading campaigns...</p>
-          </div>
-        ) : categorizedCampaigns[activeTab].length === 0 ? (
-          <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-            <div className="text-6xl mb-4">📭</div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No campaigns found</h3>
-            <p className="text-gray-500 mb-6">
-              {activeTab === 'all'
-                ? "You haven't created any campaigns yet"
-                : `You don't have any ${activeTab} campaigns`}
-            </p>
-            <button
-              onClick={() => navigate('/campaign/create')}
-              className="bg-purple-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-purple-700 transition-colors"
-            >
-              + Create Campaign
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {categorizedCampaigns[activeTab].map(campaign => {
-              const status = getCampaignStatus(campaign)
-              const pct = Math.min(
-                (parseFloat(campaign.amountRaised) / parseFloat(campaign.goal)) * 100,
-                100
-              )
-              const isFiat = campaign.paymentType === 'fiat'
-              const currency = isFiat ? 'INR' : 'ETH'
-              const currencySymbol = isFiat ? '₹' : ''
+            return (
+              <div key={campaign.contractAddress} style={{
+                background:'#fff', border:'1px solid var(--cream-200)',
+                borderRadius:'var(--radius-lg)', padding:'1.5rem',
+                boxShadow:'var(--shadow-sm)', transition:'border-color .15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.borderColor='var(--teal-100)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor='var(--cream-200)'}>
 
-              const formatAmount = (amount) => {
-                const num = parseFloat(amount)
-                return isFiat
-                  ? num.toLocaleString('en-IN', { maximumFractionDigits: 0 })
-                  : num.toFixed(4)
-              }
-
-              return (
-                <div
-                  key={campaign.contractAddress}
-                  className="bg-white rounded-2xl border border-gray-200 p-6 hover:border-purple-300 hover:shadow-sm transition-all"
-                >
-                  <div className="flex flex-col lg:flex-row gap-6">
-                    {/* Image */}
-                    <div
-                      className="w-full lg:w-48 h-32 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl overflow-hidden cursor-pointer flex-shrink-0"
-                      onClick={() => navigate(`/campaign/${campaign.contractAddress}`)}
-                    >
-                      {campaign.imageHash ? (
-                        <img
-                          src={`https://gateway.pinata.cloud/ipfs/${campaign.imageHash}`}
-                          alt={campaign.title}
-                          className="w-full h-full object-cover hover:scale-105 transition-transform"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1">
+                <div style={{ display:'flex', gap:'1.25rem', flexWrap:'wrap' }}>
+                  {/* Thumbnail */}
+                  <div style={{
+                    width:192, height:120, borderRadius:'var(--radius-md)', overflow:'hidden',
+                    background:'var(--cream-100)', flexShrink:0, cursor:'pointer',
+                  }} onClick={() => navigate(`/campaign/${campaign.contractAddress}`)}>
+                    {campaign.imageHash
+                      ? <img src={`https://gateway.pinata.cloud/ipfs/${campaign.imageHash}`} alt={campaign.title}
+                          style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                      : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--cream-300)" strokeWidth="1">
                             <rect x="3" y="3" width="18" height="18" rx="3"/>
                             <circle cx="8.5" cy="8.5" r="1.5"/>
                             <path d="M21 15l-5-5L5 21"/>
                           </svg>
                         </div>
-                      )}
+                    }
+                  </div>
+
+                  {/* Content */}
+                  <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', gap:8 }}>
+                    <div style={{ display:'flex', alignItems:'flex-start', gap:10, flexWrap:'wrap' }}>
+                      <div style={{ flex:1, minWidth:0, cursor:'pointer' }}
+                        onClick={() => navigate(`/campaign/${campaign.contractAddress}`)}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:4 }}>
+                          <h3 style={{ fontFamily:'var(--font-serif)', fontSize:'1.05rem', color:'var(--ink-900)', margin:0, lineHeight:1.3 }}>
+                            {campaign.title}
+                          </h3>
+                          <StatusBadge status={status}/>
+                          {campaign.verificationStatus === 'verified' && (
+                            <span style={{
+                              background:'var(--teal-50)', color:'var(--teal-600)',
+                              fontFamily:'var(--font-sans)', fontSize:'.7rem', fontWeight:600,
+                              padding:'2px 8px', borderRadius:'var(--radius-full)',
+                            }}>✓ Verified</span>
+                          )}
+                        </div>
+                        <p style={{ fontFamily:'var(--font-sans)', fontSize:'.75rem', color:'var(--ink-100)', margin:0, fontVariantNumeric:'tabular-nums' }}>
+                          {campaign.contractAddress?.slice(0,10)}…{campaign.contractAddress?.slice(-8)}
+                        </p>
+                      </div>
                     </div>
 
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-4 mb-3">
-                        <div
-                          className="flex-1 cursor-pointer"
-                          onClick={() => navigate(`/campaign/${campaign.contractAddress}`)}
-                        >
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-semibold text-gray-900 hover:text-purple-700 transition-colors">
-                              {campaign.title}
-                            </h3>
-                            <StatusBadge status={status} />
-                            {campaign.verificationStatus === 'verified' && (
-                              <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-medium">
-                                ✓ Verified
-                              </span>
+                    {/* Progress */}
+                    <ProgressBar percent={pct}/>
+
+                    <div style={{ display:'flex', justifyContent:'space-between', fontFamily:'var(--font-sans)', fontSize:'.85rem' }}>
+                      <span>
+                        <strong style={{ color:'var(--ink-900)' }}>{fmt(campaign.amountRaised)}</strong>
+                        <span style={{ color:'var(--ink-300)' }}> / {fmt(campaign.goal)}</span>
+                      </span>
+                      <div style={{ display:'flex', gap:'1rem', color:'var(--ink-300)' }}>
+                        <span>{campaign.funders || 0} funders</span>
+                        <span style={{ color: pct >= 100 ? '#15803d' : 'var(--teal-500)', fontWeight:600 }}>
+                          {Math.round(pct)}%
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Footer actions */}
+                    <div style={{
+                      display:'flex', alignItems:'center', justifyContent:'space-between',
+                      paddingTop:'0.75rem', borderTop:'1px solid var(--cream-100)', flexWrap:'wrap', gap:8,
+                    }}>
+                      <CountdownTimer deadline={campaign.deadline}/>
+
+                      <div style={{ display:'flex', gap:8 }}>
+                        {campaign.paymentType !== 'fiat' && (
+                          <>
+                            <button onClick={() => handlePause(campaign)}
+                              disabled={actionLoading[campaign.contractAddress] === 'pausing'}
+                              style={{
+                                padding:'7px 14px', border:'1.5px solid var(--cream-300)',
+                                borderRadius:'var(--radius-full)',
+                                fontFamily:'var(--font-sans)', fontSize:'.78rem', fontWeight:500,
+                                color:'var(--ink-700)', background:'#fff', cursor:'pointer',
+                                opacity: actionLoading[campaign.contractAddress] === 'pausing' ? .5 : 1,
+                              }}>
+                              {actionLoading[campaign.contractAddress] === 'pausing' ? 'Pausing…' : campaign.paused ? 'Resume' : 'Pause'}
+                            </button>
+
+                            {pct >= 100 && !campaign.claimed && (
+                              <button onClick={() => handleClaim(campaign)}
+                                disabled={actionLoading[campaign.contractAddress] === 'claiming'}
+                                style={{
+                                  padding:'7px 14px', border:'none', borderRadius:'var(--radius-full)',
+                                  fontFamily:'var(--font-sans)', fontSize:'.78rem', fontWeight:600,
+                                  color:'#fff', background:'#15803d', cursor:'pointer',
+                                  opacity: actionLoading[campaign.contractAddress] === 'claiming' ? .5 : 1,
+                                }}>
+                                {actionLoading[campaign.contractAddress] === 'claiming' ? 'Claiming…' : 'Claim Funds'}
+                              </button>
                             )}
-                          </div>
-                          <p className="text-sm text-gray-500 mb-1">
-                            {campaign.contractAddress.slice(0, 10)}...{campaign.contractAddress.slice(-8)}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Progress */}
-                      <ProgressBar percent={pct} />
-
-                      <div className="flex items-center justify-between mt-2 mb-4">
-                        <div className="text-sm">
-                          <span className="font-semibold text-gray-900">
-                            {currencySymbol}{formatAmount(campaign.amountRaised)} {currency}
-                          </span>
-                          <span className="text-gray-400">
-                            {' '}/ {currencySymbol}{formatAmount(campaign.goal)} {currency}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-gray-500">
-                          <span>{campaign.funders || 0} funders</span>
-                          <span className={`font-medium ${pct >= 100 ? 'text-green-600' : 'text-purple-600'}`}>
-                            {Math.round(pct)}%
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Footer */}
-                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                        <CountdownTimer deadline={campaign.deadline} />
-
-                        {status === 'expiring' && (
-                          <div className="bg-orange-50 text-orange-700 px-3 py-1 rounded-full text-xs font-medium">
-                            Expiring soon — share your campaign to reach the goal!
-                          </div>
+                          </>
                         )}
 
-                        <div className="flex gap-2">
-                          {campaign.paymentType === 'eth' && (
-                            <>
-                              <button
-                                onClick={() => handlePause(campaign)}
-                                disabled={actionLoading[campaign.contractAddress] === 'pausing'}
-                                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
-                              >
-                                {actionLoading[campaign.contractAddress] === 'pausing'
-                                  ? 'Pausing...'
-                                  : campaign.paused
-                                  ? 'Resume'
-                                  : 'Pause'}
-                              </button>
-
-                              {pct >= 100 && !campaign.claimed && (
-                                <button
-                                  onClick={() => handleClaim(campaign)}
-                                  disabled={actionLoading[campaign.contractAddress] === 'claiming'}
-                                  className="px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
-                                >
-                                  {actionLoading[campaign.contractAddress] === 'claiming'
-                                    ? 'Claiming...'
-                                    : 'Claim Funds'}
-                                </button>
-                              )}
-                            </>
-                          )}
-
-                          <button
-                            onClick={() => navigate(`/campaign/${campaign.contractAddress}`)}
-                            className="px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-medium hover:bg-purple-700 transition-colors"
-                          >
-                            View Details
-                          </button>
-                        </div>
+                        <button onClick={() => navigate(`/campaign/${campaign.contractAddress}`)}
+                          className="btn-primary" style={{ fontSize:'.78rem', padding:'7px 16px' }}>
+                          View Details
+                        </button>
                       </div>
                     </div>
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
-
-export default MyCampaigns
