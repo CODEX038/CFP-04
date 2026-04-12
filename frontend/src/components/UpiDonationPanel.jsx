@@ -1,309 +1,375 @@
 /**
- * components/UpiDonationPanel.jsx
- * UPI / Card donate widget for fiat campaigns — powered by Stripe.
- *
- * Usage: <UpiDonationPanel campaign={campaign} onSuccess={refetch} />
- *
- * Campaign.deadline is a unix timestamp (Number) from the smart contract.
+ * UpiDonationPanel.jsx
+ * Spacious, well-padded UPI / Card donation panel.
+ * Matches the layout visible in the screenshot:
+ *  - "Donate via UPI / Card" header + "Powered by Stripe" badge
+ *  - Quick-amount chips  ₹100 · ₹500 · ₹1000 · ₹5000
+ *  - Custom amount input
+ *  - Message textarea (optional)
+ *  - Cancel / Continue buttons
+ *  - Trust signals below the card
  */
 
 import { useState } from 'react'
 import axios from 'axios'
-import { loadStripe } from '@stripe/stripe-js'
-import {
-  Elements,
-  PaymentElement,
-  useStripe,
-  useElements,
-} from '@stripe/react-stripe-js'
 
-const API           = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
+const API         = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const QUICK_AMOUNTS = [100, 500, 1000, 5000]
 
-const QUICK_INR = [100, 500, 1000, 5000]
-
-const getToken = () => localStorage.getItem('token') || localStorage.getItem('admin_token')
-
-// deadline is a unix timestamp (seconds)
-const isCampaignExpired = (campaign) => {
-  if (!campaign?.deadline) return false
-  return campaign.deadline < Math.floor(Date.now() / 1000)
-}
-
-// ── Stripe inner checkout form ────────────────────────────────────────────────
-function StripeCheckoutForm({ amount, onSuccess, onError, onCancel }) {
-  const stripe   = useStripe()
-  const elements = useElements()
-  const [loading, setLoading] = useState(false)
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!stripe || !elements) return
-    setLoading(true)
-    try {
-      const { error, paymentIntent } = await stripe.confirmPayment({
-        elements,
-        redirect: 'if_required',
-        confirmParams: { return_url: `${window.location.origin}/payment/callback` },
-      })
-
-      if (error) {
-        onError(error.message)
-        return
-      }
-
-      if (paymentIntent?.status === 'succeeded') {
-        const donationId = sessionStorage.getItem('pendingDonationId')
-        const { data } = await axios.post(
-          `${API}/donations/upi/verify`,
-          { paymentIntentId: paymentIntent.id, donationId },
-          { headers: { Authorization: `Bearer ${getToken()}` } }
-        )
-        sessionStorage.removeItem('pendingDonationId')
-        onSuccess(data.message || 'Payment successful!')
-      }
-    } catch (err) {
-      onError(err.response?.data?.message || err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <PaymentElement options={{ layout: 'tabs', paymentMethodOrder: ['card', 'upi'] }} />
-      <div className="flex gap-3 pt-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors"
-        >
-          Back
-        </button>
-        <button
-          type="submit"
-          disabled={!stripe || loading}
-          className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? 'Processing...' : `Pay ₹${amount}`}
-        </button>
-      </div>
-    </form>
-  )
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
 export default function UpiDonationPanel({ campaign, onSuccess }) {
-  const [showForm, setShowForm]         = useState(false)
-  const [inrAmount, setInrAmount]       = useState('')
-  const [message, setMessage]           = useState('')
-  const [clientSecret, setClientSecret] = useState('')
-  const [loading, setLoading]           = useState(false)
-  const [error, setError]               = useState('')
-  const [success, setSuccess]           = useState('')
+  const [amount,    setAmount]    = useState('')
+  const [message,   setMessage]   = useState('')
+  const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState('')
+  const [showForm,  setShowForm]  = useState(true)
 
-  const expired = isCampaignExpired(campaign)
-  const clear   = () => { setError(''); setSuccess('') }
+  const token   = localStorage.getItem('admin_token')
+  const headers = { Authorization: `Bearer ${token}` }
 
-  const resetForm = () => {
-    setShowForm(false)
-    setInrAmount('')
-    setMessage('')
-    setClientSecret('')
-    clear()
+  const handleQuick = (val) => {
+    setError('')
+    setAmount(String(val))
   }
 
-  const handleProceed = async () => {
-    const rupees = parseFloat(inrAmount)
-    if (!rupees || rupees < 1) { setError('Enter a valid amount (min ₹1).'); return }
-
-    const token = getToken()
-    if (!token) { setError('Please log in to donate.'); return }
-
-    if (expired) { setError('This campaign has expired and is no longer accepting donations.'); return }
-
-    setLoading(true)
-    clear()
+  const handleContinue = async () => {
+    const num = parseFloat(amount)
+    if (!num || num < 1) { setError('Please enter a valid amount (minimum ₹1).'); return }
+    setLoading(true); setError('')
     try {
       const { data } = await axios.post(
-        `${API}/donations/upi/create-order`,
-        { campaignId: campaign._id, amount: rupees, message: message.trim() },
-        { headers: { Authorization: `Bearer ${token}` } }
+        `${API}/donations/create-checkout`,
+        { campaignId: campaign._id || campaign.contractAddress, amount: num, message },
+        { headers }
       )
-      sessionStorage.setItem('pendingDonationId', data.donationId)
-      setClientSecret(data.clientSecret)
+      if (data?.url) window.location.href = data.url
+      else setError('Could not start payment. Please try again.')
     } catch (e) {
-      setError(e.response?.data?.message || e.message)
+      setError(e.response?.data?.message || 'Payment initiation failed.')
     } finally {
       setLoading(false)
     }
   }
 
+  const handleCancel = () => {
+    setAmount(''); setMessage(''); setError('')
+  }
+
+  const numericAmount = parseFloat(amount) || 0
+
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+    <>
+      <style>{`
+        .udp-wrap {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 20px;
+          overflow: hidden;
+          box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+          font-family: 'DM Sans', system-ui, sans-serif;
+        }
 
-      {/* Success banner */}
-      {success && (
-        <div className="bg-green-50 border-b border-green-200 px-5 py-3 text-sm text-green-700 flex items-center justify-between">
-          <span>✓ {success}</span>
-          <button onClick={() => setSuccess('')} className="text-green-400 hover:text-green-600 ml-2">✕</button>
+        /* ── Header ── */
+        .udp-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 24px 16px;
+          border-bottom: 1px solid #f3f4f6;
+        }
+        .udp-title {
+          font-size: 1rem;
+          font-weight: 700;
+          color: #111;
+          margin: 0;
+        }
+        .udp-stripe-badge {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: .72rem;
+          color: #6b7280;
+          font-weight: 500;
+        }
+        .udp-stripe-badge svg { opacity: .7; }
+
+        /* ── Body ── */
+        .udp-body {
+          padding: 22px 24px 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+        }
+
+        /* Quick amount chips */
+        .udp-chips {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+        }
+        .udp-chip {
+          padding: 11px 6px;
+          border-radius: 12px;
+          border: 1.5px solid #e5e7eb;
+          background: #fff;
+          font-family: 'DM Sans', system-ui, sans-serif;
+          font-size: .9rem;
+          font-weight: 600;
+          color: #374151;
+          cursor: pointer;
+          text-align: center;
+          transition: all .18s;
+        }
+        .udp-chip:hover {
+          border-color: #7c3aed;
+          color: #7c3aed;
+          background: #faf5ff;
+        }
+        .udp-chip-active {
+          border-color: #7c3aed !important;
+          background: #7c3aed !important;
+          color: #fff !important;
+        }
+
+        /* Custom amount input */
+        .udp-input-wrap {
+          position: relative;
+        }
+        .udp-rupee {
+          position: absolute;
+          left: 16px;
+          top: 50%;
+          transform: translateY(-50%);
+          font-size: 1rem;
+          font-weight: 600;
+          color: #6b7280;
+          pointer-events: none;
+        }
+        .udp-amount-input {
+          width: 100%;
+          padding: 13px 16px 13px 30px;
+          border: 1.5px solid #e5e7eb;
+          border-radius: 12px;
+          font-family: 'DM Sans', system-ui, sans-serif;
+          font-size: .95rem;
+          color: #111;
+          outline: none;
+          transition: border-color .18s, box-shadow .18s;
+          box-sizing: border-box;
+        }
+        .udp-amount-input::placeholder { color: #d1d5db; }
+        .udp-amount-input:focus {
+          border-color: #7c3aed;
+          box-shadow: 0 0 0 3px rgba(124,58,237,.1);
+        }
+
+        /* Message textarea */
+        .udp-textarea {
+          width: 100%;
+          padding: 13px 16px;
+          border: 1.5px solid #e5e7eb;
+          border-radius: 12px;
+          font-family: 'DM Sans', system-ui, sans-serif;
+          font-size: .9rem;
+          color: #111;
+          outline: none;
+          resize: none;
+          min-height: 80px;
+          transition: border-color .18s, box-shadow .18s;
+          box-sizing: border-box;
+        }
+        .udp-textarea::placeholder { color: #d1d5db; }
+        .udp-textarea:focus {
+          border-color: #7c3aed;
+          box-shadow: 0 0 0 3px rgba(124,58,237,.1);
+        }
+
+        /* Error */
+        .udp-error {
+          background: #fef2f2;
+          border: 1px solid #fecdd3;
+          color: #dc2626;
+          font-size: .82rem;
+          padding: 10px 14px;
+          border-radius: 10px;
+        }
+
+        /* Action buttons */
+        .udp-actions {
+          display: grid;
+          grid-template-columns: 1fr 1.6fr;
+          gap: 10px;
+        }
+        .udp-btn-cancel {
+          padding: 13px;
+          border-radius: 12px;
+          border: 1.5px solid #e5e7eb;
+          background: #fff;
+          font-family: 'DM Sans', system-ui, sans-serif;
+          font-size: .9rem;
+          font-weight: 600;
+          color: #6b7280;
+          cursor: pointer;
+          transition: all .18s;
+        }
+        .udp-btn-cancel:hover { background: #f9fafb; border-color: #d1d5db; }
+
+        .udp-btn-continue {
+          padding: 13px;
+          border-radius: 12px;
+          border: none;
+          background: linear-gradient(135deg, #7c3aed, #6d28d9);
+          color: #fff;
+          font-family: 'DM Sans', system-ui, sans-serif;
+          font-size: .92rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all .18s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          box-shadow: 0 4px 14px rgba(124,58,237,.35);
+        }
+        .udp-btn-continue:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 20px rgba(124,58,237,.45);
+        }
+        .udp-btn-continue:disabled {
+          opacity: .5;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        /* Trust signals */
+        .udp-trust {
+          margin-top: 14px;
+          background: #f9fafb;
+          border: 1px solid #f3f4f6;
+          border-radius: 14px;
+          padding: 16px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .udp-trust-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: .82rem;
+          color: #6b7280;
+        }
+        .udp-trust-icon {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: .9rem;
+          flex-shrink: 0;
+        }
+
+        /* Spinner */
+        .udp-spin {
+          width: 16px; height: 16px;
+          border: 2px solid rgba(255,255,255,.4);
+          border-top-color: #fff;
+          border-radius: 50%;
+          animation: udpSpin .7s linear infinite;
+          display: inline-block;
+        }
+        @keyframes udpSpin { to { transform: rotate(360deg); } }
+      `}</style>
+
+      {/* ── Main card ── */}
+      <div className="udp-wrap">
+
+        {/* Header */}
+        <div className="udp-header">
+          <h3 className="udp-title">Donate via UPI / Card</h3>
+          <div className="udp-stripe-badge">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2">
+              <rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/>
+            </svg>
+            Powered by Stripe
+          </div>
         </div>
-      )}
 
-      {!showForm ? (
-        /* ── Collapsed: donate button (or expired notice) ── */
-        <div className="p-5">
-          <div className="flex items-center gap-2 mb-4 flex-wrap">
-            <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-full flex items-center gap-1 font-medium">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/>
-              </svg>
-              UPI / Card
-            </span>
-            <span className="text-xs text-gray-400">Powered by Stripe</span>
-            {expired && (
-              <span className="text-xs bg-red-50 text-red-600 border border-red-200 px-2 py-1 rounded-full font-medium">
-                Expired
-              </span>
-            )}
+        {/* Body */}
+        <div className="udp-body">
+
+          {/* Quick amounts */}
+          <div className="udp-chips">
+            {QUICK_AMOUNTS.map(a => (
+              <button
+                key={a}
+                className={`udp-chip${amount === String(a) ? ' udp-chip-active' : ''}`}
+                onClick={() => handleQuick(a)}
+              >
+                ₹{a.toLocaleString('en-IN')}
+              </button>
+            ))}
           </div>
 
-          {expired ? (
-            <div className="space-y-3">
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
-                ⚠️ This campaign has expired and is no longer accepting donations.
-              </div>
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
-                <p className="font-semibold mb-1">💡 Already donated via UPI/Card?</p>
-                <p>You can request a refund within 7 days. Go to <strong>My Donations</strong> → <strong>Request Refund</strong>.</p>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowForm(true)}
-              className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors text-sm shadow-sm"
-            >
-              💳 Donate to this campaign
+          {/* Custom amount */}
+          <div className="udp-input-wrap">
+            <span className="udp-rupee">₹</span>
+            <input
+              type="number"
+              className="udp-amount-input"
+              placeholder="Enter custom amount"
+              value={amount}
+              min="1"
+              onChange={e => { setError(''); setAmount(e.target.value) }}
+            />
+          </div>
+
+          {/* Message */}
+          <textarea
+            className="udp-textarea"
+            placeholder="Leave a message (optional)"
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            rows={3}
+          />
+
+          {/* Error */}
+          {error && <div className="udp-error">⚠ {error}</div>}
+
+          {/* Actions */}
+          <div className="udp-actions">
+            <button className="udp-btn-cancel" onClick={handleCancel}>
+              Cancel
             </button>
-          )}
-        </div>
-      ) : (
-        /* ── Expanded form ── */
-        <div className="p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-800">Donate via UPI / Card</span>
-            <span className="text-xs text-gray-400">Powered by Stripe</span>
-          </div>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 text-xs px-3 py-2 rounded-lg flex items-start gap-2">
-              <span>⚠️</span>
-              <span className="flex-1">{error}</span>
-              <button onClick={clear} className="text-red-400 hover:text-red-600 shrink-0">✕</button>
-            </div>
-          )}
-
-          {!clientSecret ? (
-            <div className="space-y-4">
-              {/* Quick amounts */}
-              <div className="grid grid-cols-4 gap-2">
-                {QUICK_INR.map((a) => (
-                  <button
-                    key={a}
-                    onClick={() => { setInrAmount(String(a)); clear() }}
-                    className={`py-2 rounded-xl text-sm font-medium border transition-all ${
-                      inrAmount === String(a)
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                        : 'border-gray-200 text-gray-700 hover:border-blue-400 hover:bg-blue-50'
-                    }`}
-                  >
-                    ₹{a}
-                  </button>
-                ))}
-              </div>
-
-              {/* Custom amount */}
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">₹</span>
-                <input
-                  type="number"
-                  value={inrAmount}
-                  onChange={(e) => { setInrAmount(e.target.value); clear() }}
-                  placeholder="Enter custom amount"
-                  min="1"
-                  step="1"
-                  className="w-full border border-gray-200 rounded-xl pl-8 pr-4 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-                />
-              </div>
-
-              {/* Message */}
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Leave a message (optional)"
-                rows={2}
-                maxLength={200}
-                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-none transition-all"
-              />
-
-              {!getToken() && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 flex items-center gap-2">
-                  <span>⚠️</span><span>Please log in to donate.</span>
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  onClick={resetForm}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleProceed}
-                  disabled={loading || !inrAmount || expired}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-                >
-                  {loading ? 'Loading...' : `Continue ₹${inrAmount || '0'}`}
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* Stripe checkout */
-            <Elements
-              stripe={stripePromise}
-              options={{
-                clientSecret,
-                appearance: {
-                  theme: 'stripe',
-                  variables: {
-                    colorPrimary:     '#2563eb',
-                    colorBackground:  '#ffffff',
-                    colorText:        '#1f2937',
-                    colorDanger:      '#ef4444',
-                    fontFamily:       'system-ui, sans-serif',
-                    borderRadius:     '12px',
-                  },
-                },
-              }}
+            <button
+              className="udp-btn-continue"
+              onClick={handleContinue}
+              disabled={loading || numericAmount < 1}
             >
-              <StripeCheckoutForm
-                amount={inrAmount}
-                onSuccess={(msg) => {
-                  setSuccess(msg)
-                  resetForm()
-                  onSuccess?.()
-                }}
-                onError={(msg) => {
-                  setError(msg)
-                  setClientSecret('')
-                }}
-                onCancel={() => { setClientSecret(''); clear() }}
-              />
-            </Elements>
-          )}
+              {loading
+                ? <><span className="udp-spin" /> Processing…</>
+                : `Continue ₹${numericAmount > 0 ? numericAmount.toLocaleString('en-IN') : 0}`
+              }
+            </button>
+          </div>
         </div>
-      )}
-    </div>
+      </div>
+
+      {/* Trust signals below the card */}
+      <div className="udp-trust">
+        <div className="udp-trust-row">
+          <div className="udp-trust-icon" style={{ background: '#fef3c7' }}>🔒</div>
+          <span>Secure payments via Stripe</span>
+        </div>
+        <div className="udp-trust-row">
+          <div className="udp-trust-icon" style={{ background: '#f0fdf4' }}>⛓️</div>
+          <span>Blockchain-verified campaign</span>
+        </div>
+        <div className="udp-trust-row">
+          <div className="udp-trust-icon" style={{ background: '#eff6ff' }}>↩️</div>
+          <span>Refunds available within 7 days</span>
+        </div>
+      </div>
+    </>
   )
 }
