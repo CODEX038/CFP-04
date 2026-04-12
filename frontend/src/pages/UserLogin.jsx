@@ -43,7 +43,7 @@ function OtpBoxes({ value, onChange, disabled }) {
             opacity: disabled ? .5 : 1,
           }}
           onFocus={e => { if (!v.trim()) e.target.style.borderColor = "#A78BFA" }}
-          onBlur={e  => { if (!v.trim()) e.target.style.borderColor = "#E5E7EB"  }}
+          onBlur={e => { if (!v.trim()) e.target.style.borderColor = "#E5E7EB" }}
         />
       ))}
     </div>
@@ -68,9 +68,9 @@ function ResendBtn({ onResend, disabled }) {
       {secs > 0
         ? <>Resend code in <strong style={{ color: "#6B7280" }}>{secs}s</strong></>
         : <button onClick={handle} disabled={busy || disabled} style={{
-            background: "none", border: "none", cursor: "pointer",
-            color: "#7C3AED", fontWeight: 600, textDecoration: "underline", fontSize: ".8rem",
-          }}>{busy ? "Sending…" : "Resend OTP"}</button>
+          background: "none", border: "none", cursor: "pointer",
+          color: "#7C3AED", fontWeight: 600, textDecoration: "underline", fontSize: ".8rem",
+        }}>{busy ? "Sending…" : "Resend OTP"}</button>
       }
     </p>
   );
@@ -89,7 +89,7 @@ function Input({ type = "text", value, onChange, placeholder, onKeyDown }) {
     <input type={type} value={value} onChange={onChange} placeholder={placeholder} onKeyDown={onKeyDown}
       style={inputStyle}
       onFocus={e => { e.target.style.borderColor = "#7C3AED"; e.target.style.background = "#fff" }}
-      onBlur={e  => { e.target.style.borderColor = "#E5E7EB"; e.target.style.background = "#F9FAFB" }}
+      onBlur={e => { e.target.style.borderColor = "#E5E7EB"; e.target.style.background = "#F9FAFB" }}
     />
   );
 }
@@ -100,17 +100,17 @@ const UserLogin = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const [tab, setTab]         = useState("login");
+  const [tab, setTab] = useState("login");
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [step, setStep]       = useState(0);
+  const [step, setStep] = useState(0);
 
   const [photoPreview, setPhotoPreview] = useState(null);
-  const [docPreview, setDocPreview]     = useState(null);
-  const [emailOtp, setEmailOtp]         = useState("");
-  const [phoneOtp, setPhoneOtp]         = useState("");
-  const [otpLoading, setOtpLoading]     = useState(false);
+  const [docPreview, setDocPreview] = useState(null);
+  const [emailOtp, setEmailOtp] = useState("");
+  const [phoneOtp, setPhoneOtp] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
 
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [reg, setReg] = useState({
@@ -126,17 +126,17 @@ const UserLogin = () => {
   const labelIdx = step <= 1 ? 0 : step <= 3 ? 1 : 2;
 
   const validateBasic = () => {
-    if (!reg.name)     { setError("Name is required.");           return false }
-    if (!reg.username) { setError("Username is required.");        return false }
+    if (!reg.name) { setError("Name is required."); return false }
+    if (!reg.username) { setError("Username is required."); return false }
     if (!reg.email || !/^\S+@\S+\.\S+$/.test(reg.email)) { setError("Valid email is required."); return false }
-    if (!reg.password || reg.password.length < 6)          { setError("Password must be at least 6 characters."); return false }
-    if (reg.password !== reg.confirm)                      { setError("Passwords do not match."); return false }
+    if (!reg.password || reg.password.length < 6) { setError("Password must be at least 6 characters."); return false }
+    if (reg.password !== reg.confirm) { setError("Passwords do not match."); return false }
     return true;
   };
   const validatePersonal = () => {
-    if (!reg.phone)    { setError("Phone number is required."); return false }
-    if (!reg.dob)      { setError("Date of birth is required."); return false }
-    if (!reg.location) { setError("Location is required.");     return false }
+    if (!reg.phone) { setError("Phone number is required."); return false }
+    if (!reg.dob) { setError("Date of birth is required."); return false }
+    if (!reg.location) { setError("Location is required."); return false }
     return true;
   };
 
@@ -206,7 +206,7 @@ const UserLogin = () => {
   };
   const handleBack = () => { clear(); setStep(s => s === 1 ? 0 : s === 2 ? 1 : s === 3 ? 2 : s === 4 ? 3 : s) };
   const handlePhotoUpload = (e) => { const f = e.target.files[0]; if (!f) return; setR("profilePhotoFile", f); setPhotoPreview(URL.createObjectURL(f)) };
-  const handleDocUpload   = (e) => { const f = e.target.files[0]; if (!f) return; setR("documentFile", f); setDocPreview(f.name) };
+  const handleDocUpload = (e) => { const f = e.target.files[0]; if (!f) return; setR("documentFile", f); setDocPreview(f.name) };
   const handleFinish = async () => {
     setLoading(true); clear();
     try {
@@ -220,20 +220,23 @@ const UserLogin = () => {
     } catch { setTimeout(async () => { await login(reg.email, reg.password); navigate("/app") }, 800) }
     finally { setLoading(false) }
   };
+
+  // ── FIXED LOGIN HANDLER ───────────────────────────────────────────────────
   const handleLogin = async () => {
-    if (!loginForm.email || !loginForm.password) { setError("Please fill in all fields."); return }
-    setLoading(true); clear();
+    if (!loginForm.email || !loginForm.password) {
+      setError("Please fill in all fields.");
+      return;
+    }
+    setLoading(true);
+    clear();
     try {
       await login(loginForm.email, loginForm.password);
-      const token = localStorage.getItem("token") || localStorage.getItem("admin_token");
-      if (token) {
-        const p = JSON.parse(atob(token.split(".")[1]));
-        if (!p.emailVerified) return navigate("/verify/email", { state: { email: loginForm.email } });
-        if (!p.phoneVerified) return navigate("/verify/phone");
-      }
       navigate("/app");
-    } catch (e) { setError(e.response?.data?.message || "Invalid credentials") }
-    finally { setLoading(false) }
+    } catch (e) {
+      setError(e.response?.data?.message || "Invalid credentials");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ── Shared button styles ──────────────────────────────────────────────────
@@ -313,7 +316,7 @@ const UserLogin = () => {
             display: "flex", alignItems: "flex-start", gap: 10,
           }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
-              <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+              <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
             </svg>
             {error}
           </div>
@@ -326,7 +329,7 @@ const UserLogin = () => {
             display: "flex", alignItems: "center", gap: 10,
           }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}>
-              <path d="M20 6L9 17l-5-5"/>
+              <path d="M20 6L9 17l-5-5" />
             </svg>
             {success}
           </div>
@@ -337,11 +340,11 @@ const UserLogin = () => {
           <div style={{ display: "flex", flexDirection: "column", gap: "1.1rem" }}>
             <div>
               <label style={label}>Email</label>
-              <Input type="email" value={loginForm.email} onChange={e => setL("email", e.target.value)} placeholder="you@example.com"/>
+              <Input type="email" value={loginForm.email} onChange={e => setL("email", e.target.value)} placeholder="you@example.com" />
             </div>
             <div>
               <label style={label}>Password</label>
-              <Input type="password" value={loginForm.password} onChange={e => setL("password", e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && handleLogin()}/>
+              <Input type="password" value={loginForm.password} onChange={e => setL("password", e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && handleLogin()} />
             </div>
             <button onClick={handleLogin} disabled={loading} style={{ ...btnPrimary, opacity: loading ? .6 : 1, marginTop: 4 }}
               onMouseEnter={e => e.currentTarget.style.opacity = loading ? .6 : .9}
@@ -375,7 +378,7 @@ const UserLogin = () => {
                     </span>
                   </div>
                   {i < 2 && (
-                    <div style={{ flex: 1, height: 2, margin: "0 8px 16px", background: i < labelIdx ? "#7C3AED" : "#E5E7EB", borderRadius: 1, transition: "background .3s" }}/>
+                    <div style={{ flex: 1, height: 2, margin: "0 8px 16px", background: i < labelIdx ? "#7C3AED" : "#E5E7EB", borderRadius: 1, transition: "background .3s" }} />
                   )}
                 </div>
               ))}
@@ -394,11 +397,11 @@ const UserLogin = () => {
                       overflow: "hidden", transition: "border-color .15s",
                     }}>
                       {photoPreview
-                        ? <img src={photoPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}/>
-                        : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        ? <img src={photoPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
                       }
                     </div>
-                    <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: "none" }}/>
+                    <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: "none" }} />
                   </label>
                   <div>
                     <p style={{ fontFamily: "var(--font-sans)", fontSize: ".875rem", fontWeight: 600, color: "#374151", margin: "0 0 3px" }}>Profile photo</p>
@@ -409,25 +412,25 @@ const UserLogin = () => {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
                     <label style={label}>Full name</label>
-                    <Input value={reg.name} onChange={e => setR("name", e.target.value)} placeholder="Bhushan Patil"/>
+                    <Input value={reg.name} onChange={e => setR("name", e.target.value)} placeholder="Bhushan Patil" />
                   </div>
                   <div>
                     <label style={label}>Username</label>
-                    <Input value={reg.username} onChange={e => setR("username", e.target.value)} placeholder="bhushan_k"/>
+                    <Input value={reg.username} onChange={e => setR("username", e.target.value)} placeholder="bhushan_k" />
                   </div>
                 </div>
                 <div>
                   <label style={label}>Email address</label>
-                  <Input type="email" value={reg.email} onChange={e => setR("email", e.target.value)} placeholder="you@example.com"/>
+                  <Input type="email" value={reg.email} onChange={e => setR("email", e.target.value)} placeholder="you@example.com" />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
                     <label style={label}>Password</label>
-                    <Input type="password" value={reg.password} onChange={e => setR("password", e.target.value)} placeholder="Min. 6 chars"/>
+                    <Input type="password" value={reg.password} onChange={e => setR("password", e.target.value)} placeholder="Min. 6 chars" />
                   </div>
                   <div>
                     <label style={label}>Confirm</label>
-                    <Input type="password" value={reg.confirm} onChange={e => setR("confirm", e.target.value)} placeholder="Repeat"/>
+                    <Input type="password" value={reg.confirm} onChange={e => setR("confirm", e.target.value)} placeholder="Repeat" />
                   </div>
                 </div>
                 <button onClick={handleContinueBasic} disabled={otpLoading}
@@ -447,8 +450,8 @@ const UserLogin = () => {
                     We sent a 6-digit code to <strong style={{ color: "#7C3AED" }}>{reg.email}</strong>
                   </p>
                 </div>
-                <OtpBoxes value={emailOtp} onChange={setEmailOtp} disabled={otpLoading}/>
-                <ResendBtn onResend={sendEmailOtp} disabled={otpLoading}/>
+                <OtpBoxes value={emailOtp} onChange={setEmailOtp} disabled={otpLoading} />
+                <ResendBtn onResend={sendEmailOtp} disabled={otpLoading} />
                 <div style={{ display: "flex", gap: 10 }}>
                   <button onClick={handleBack} style={btnSecondary}
                     onMouseEnter={e => e.currentTarget.style.background = "#F9FAFB"}
@@ -466,23 +469,23 @@ const UserLogin = () => {
             {step === 2 && (
               <div style={{ display: "flex", flexDirection: "column", gap: "1.1rem" }}>
                 <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" /></svg>
                   <p style={{ fontFamily: "var(--font-sans)", fontSize: ".8rem", color: "#065F46", margin: 0 }}>
                     <strong>{reg.email}</strong> verified
                   </p>
                 </div>
                 <div>
                   <label style={label}>Phone number</label>
-                  <Input type="tel" value={reg.phone} onChange={e => setR("phone", e.target.value)} placeholder="+919876543210"/>
+                  <Input type="tel" value={reg.phone} onChange={e => setR("phone", e.target.value)} placeholder="+919876543210" />
                   <p style={{ fontFamily: "var(--font-sans)", fontSize: ".75rem", color: "#9CA3AF", margin: "6px 0 0" }}>Include country code e.g. +91</p>
                 </div>
                 <div>
                   <label style={label}>Date of birth</label>
-                  <Input type="date" value={reg.dob} onChange={e => setR("dob", e.target.value)} max={new Date().toISOString().slice(0, 10)}/>
+                  <Input type="date" value={reg.dob} onChange={e => setR("dob", e.target.value)} max={new Date().toISOString().slice(0, 10)} />
                 </div>
                 <div>
                   <label style={label}>Location</label>
-                  <Input value={reg.location} onChange={e => setR("location", e.target.value)} placeholder="Mumbai, Maharashtra, India"/>
+                  <Input value={reg.location} onChange={e => setR("location", e.target.value)} placeholder="Mumbai, Maharashtra, India" />
                 </div>
                 <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "10px 14px", fontFamily: "var(--font-sans)", fontSize: ".78rem", color: "#1D4ED8" }}>
                   ℹ Clicking Continue will create your account and send a phone OTP.
@@ -509,8 +512,8 @@ const UserLogin = () => {
                     Code sent to <strong style={{ color: "#7C3AED" }}>{reg.phone}</strong>
                   </p>
                 </div>
-                <OtpBoxes value={phoneOtp} onChange={setPhoneOtp} disabled={otpLoading}/>
-                <ResendBtn onResend={sendPhoneOtp} disabled={otpLoading}/>
+                <OtpBoxes value={phoneOtp} onChange={setPhoneOtp} disabled={otpLoading} />
+                <ResendBtn onResend={sendPhoneOtp} disabled={otpLoading} />
                 <div style={{ display: "flex", gap: 10 }}>
                   <button onClick={handleBack} style={btnSecondary}
                     onMouseEnter={e => e.currentTarget.style.background = "#F9FAFB"}
@@ -528,7 +531,7 @@ const UserLogin = () => {
             {step === 4 && (
               <div style={{ display: "flex", flexDirection: "column", gap: "1.1rem" }}>
                 <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 10, padding: "10px 14px", display: "flex", gap: 8 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" style={{ flexShrink: 0, marginTop: 1 }}><path d="M20 6L9 17l-5-5"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" style={{ flexShrink: 0, marginTop: 1 }}><path d="M20 6L9 17l-5-5" /></svg>
                   <p style={{ fontFamily: "var(--font-sans)", fontSize: ".8rem", color: "#065F46", margin: 0 }}>
                     Email &amp; phone verified — account created!
                   </p>
@@ -560,19 +563,19 @@ const UserLogin = () => {
                     }}>
                       {docPreview ? (
                         <>
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                           <p style={{ fontFamily: "var(--font-sans)", fontSize: ".85rem", fontWeight: 600, color: "#7C3AED", margin: 0 }}>{docPreview}</p>
                           <p style={{ fontFamily: "var(--font-sans)", fontSize: ".72rem", color: "#A78BFA", margin: 0 }}>Click to change</p>
                         </>
                       ) : (
                         <>
-                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
                           <p style={{ fontFamily: "var(--font-sans)", fontSize: ".875rem", color: "#6B7280", margin: 0 }}>Click to upload</p>
                           <p style={{ fontFamily: "var(--font-sans)", fontSize: ".75rem", color: "#9CA3AF", margin: 0 }}>PDF, JPG, PNG up to 10MB</p>
                         </>
                       )}
                     </div>
-                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleDocUpload} style={{ display: "none" }}/>
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleDocUpload} style={{ display: "none" }} />
                   </label>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
@@ -591,16 +594,16 @@ const UserLogin = () => {
 
         {/* Divider */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "1.5rem 0" }}>
-          <div style={{ flex: 1, height: 1, background: "#F3F4F6" }}/>
+          <div style={{ flex: 1, height: 1, background: "#F3F4F6" }} />
           <span style={{ fontFamily: "var(--font-sans)", fontSize: ".78rem", color: "#D1D5DB" }}>or continue with wallet</span>
-          <div style={{ flex: 1, height: 1, background: "#F3F4F6" }}/>
+          <div style={{ flex: 1, height: 1, background: "#F3F4F6" }} />
         </div>
 
         {/* Wallet section */}
         {account ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981", flexShrink: 0 }}/>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981", flexShrink: 0 }} />
               <p style={{ fontFamily: "monospace", fontSize: ".8rem", color: "#065F46", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{account}</p>
             </div>
             <button onClick={() => navigate("/app")} style={{
@@ -614,12 +617,12 @@ const UserLogin = () => {
             display: "flex", alignItems: "center", gap: 10,
             opacity: isConnecting ? .6 : 1, padding: 14,
           }}
-          onMouseEnter={e => e.currentTarget.style.background = "#F9FAFB"}
-          onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+            onMouseEnter={e => e.currentTarget.style.background = "#F9FAFB"}
+            onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
-              <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
-              <path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>
+              <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+              <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+              <path d="M18 12a2 2 0 0 0 0 4h4v-4z" />
             </svg>
             {isConnecting ? "Connecting…" : "Connect MetaMask"}
           </button>
@@ -631,8 +634,8 @@ const UserLogin = () => {
             background: "none", border: "none", cursor: "pointer",
             fontFamily: "var(--font-sans)", fontSize: ".82rem", color: "#9CA3AF",
           }}
-          onMouseEnter={e => e.currentTarget.style.color = "#6B7280"}
-          onMouseLeave={e => e.currentTarget.style.color = "#9CA3AF"}>
+            onMouseEnter={e => e.currentTarget.style.color = "#6B7280"}
+            onMouseLeave={e => e.currentTarget.style.color = "#9CA3AF"}>
             ← Back to home
           </button>
           <button onClick={() => navigate("/admin-login")} style={{
