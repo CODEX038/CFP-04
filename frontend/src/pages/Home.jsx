@@ -43,7 +43,6 @@ export default function Home() {
     }
     if (category !== 'All')
       list = list.filter(c => c.category?.toLowerCase() === category.toLowerCase())
-
     list = list.filter(c => {
       const ms  = c.deadline > 1e12 ? c.deadline : c.deadline * 1000
       const pct = (parseFloat(c.amountRaised || 0) / parseFloat(c.goal || 1)) * 100
@@ -54,10 +53,10 @@ export default function Home() {
       return true
     })
     switch (sort) {
-      case 'trending': list.sort((a,b) => parseFloat(b.amountRaised||0) - parseFloat(a.amountRaised||0)); break
+      case 'trending': list.sort((a,b) => parseFloat(b.amountRaised||0)-parseFloat(a.amountRaised||0)); break
       case 'ending':   list.sort((a,b) => (a.deadline>1e12?a.deadline:a.deadline*1000)-(b.deadline>1e12?b.deadline:b.deadline*1000)); break
-      case 'goal':     list.sort((a,b) => parseFloat(b.goal||0) - parseFloat(a.goal||0)); break
-      default:         list.sort((a,b) => new Date(b.createdAt||0) - new Date(a.createdAt||0))
+      case 'goal':     list.sort((a,b) => parseFloat(b.goal||0)-parseFloat(a.goal||0)); break
+      default:         list.sort((a,b) => new Date(b.createdAt||0)-new Date(a.createdAt||0))
     }
     return list
   }, [verifiedCampaigns, search, category, filter, sort])
@@ -65,184 +64,232 @@ export default function Home() {
   const hasFilters = search || filter !== 'all' || category !== 'All'
   const clearFilters = () => { setSearch(''); setFilter('all'); setCategory('All') }
 
-  const STATS = [
-    { icon:'🚀', label:'Live campaigns',   value:`${verifiedCampaigns.length}+` },
-    { icon:'⟠',  label:'ETH raised',       value:`${totalRaised.toFixed(3)}`   },
-    { icon:'🔒', label:'Refund protected', value:'100%'                        },
-  ]
-
   return (
     <>
-      {/* ─── GLOBAL STYLES ─────────────────────────────────────────── */}
       <style>{`
-        /* Force dark bg on html/body so no white leaks anywhere */
-        html, body, #root { background: #0f0528 !important; margin: 0; padding: 0; }
-
-        .home-page { min-height: 100vh; background: #0f0528; }
-
-        /* Fixed full-page background */
-        .home-bg {
-          position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        html, body, #root {
+          margin: 0; padding: 0;
+          background: #2e1065 !important;
         }
-        .home-bg img {
-          width: 100%; height: 100%; object-fit: cover; object-position: center;
-        }
-        .home-bg-overlay {
-          position: absolute; inset: 0;
-          background: linear-gradient(135deg,
-            rgba(15,5,40,0.97) 0%,
-            rgba(35,12,75,0.95) 40%,
-            rgba(15,18,60,0.97) 100%
+
+        /* ── Page wrapper ── */
+        .h-page {
+          min-height: 100vh;
+          position: relative;
+          background: linear-gradient(160deg,
+            #1e0a4a 0%,
+            #2d1b6b 18%,
+            #3b1f7a 32%,
+            #2a1660 48%,
+            #1a1255 62%,
+            #261660 78%,
+            #1e0a4a 100%
           );
-        }
-        .home-bg-dots {
-          position: absolute; inset: 0;
-          background-image: radial-gradient(rgba(255,255,255,.055) 1px, transparent 1px);
-          background-size: 30px 30px;
-        }
-        .blob {
-          position: absolute; border-radius: 50%; filter: blur(60px); pointer-events: none;
+          font-family: 'Inter', system-ui, -apple-system, sans-serif;
         }
 
-        /* Content above bg */
-        .home-content { position: relative; z-index: 10; }
-
-        /* Hero */
-        .hero {
-          padding: clamp(2.5rem,7vw,4.5rem) clamp(1rem,4vw,2.5rem) clamp(2rem,5vw,3.5rem);
-        }
-        .hero-inner {
-          max-width: 1280px; margin: 0 auto;
-          display: grid; grid-template-columns: 1fr auto;
-          gap: 2rem; align-items: center;
-        }
-        @media (max-width: 900px) {
-          .hero-inner { grid-template-columns: 1fr; }
-          .hero-stats { display: none !important; }
+        /* Decorative orbs behind everything */
+        .h-orb {
+          position: fixed;
+          border-radius: 50%;
+          filter: blur(80px);
+          pointer-events: none;
+          z-index: 0;
         }
 
-        /* Filter bar */
-        .filter-bar {
-          position: sticky; top: 0; z-index: 40;
-          background: rgba(12,4,32,0.82);
+        /* ── Hero ── */
+        .h-hero {
+          position: relative;
+          z-index: 10;
+          padding: clamp(2.5rem, 6vw, 4rem) clamp(1.25rem, 4vw, 3rem) clamp(2rem, 4vw, 3rem);
+          overflow: hidden;
+        }
+        .h-hero::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image: radial-gradient(rgba(255,255,255,.04) 1px, transparent 1px);
+          background-size: 28px 28px;
+          pointer-events: none;
+        }
+        .h-hero-inner {
+          max-width: 1280px;
+          margin: 0 auto;
+          display: grid;
+          grid-template-columns: 1fr 280px;
+          gap: 3rem;
+          align-items: center;
+        }
+        @media (max-width: 860px) {
+          .h-hero-inner { grid-template-columns: 1fr; }
+          .h-stat-col   { display: none !important; }
+        }
+
+        /* ── Filter bar ── */
+        .h-filterbar {
+          position: sticky;
+          top: 0;
+          z-index: 40;
+          padding: 12px clamp(1.25rem, 4vw, 3rem);
+          background: rgba(30, 10, 72, 0.75);
           backdrop-filter: blur(24px);
           -webkit-backdrop-filter: blur(24px);
-          border-bottom: 1px solid rgba(255,255,255,0.07);
-          padding: 10px clamp(1rem,4vw,2.5rem);
+          border-bottom: 1px solid rgba(167,139,250,0.15);
+          box-shadow: 0 4px 32px rgba(0,0,0,0.25);
         }
-        .filter-inner { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
-        .filter-row1  { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .h-filterbar-inner {
+          max-width: 1280px;
+          margin: 0 auto;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .h-filterrow {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
 
-        /* Grid */
-        .grid-section { max-width: 1280px; margin: 0 auto; padding: 1.75rem clamp(1rem,4vw,2.5rem) 5rem; }
-        .campaign-grid {
+        /* ── Grid section ── */
+        .h-grid-section {
+          position: relative;
+          z-index: 10;
+          max-width: 1280px;
+          margin: 0 auto;
+          padding: 2rem clamp(1.25rem, 4vw, 3rem) 5rem;
+        }
+        .h-campaign-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(295px,1fr));
-          gap: 1.2rem;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          gap: 1.25rem;
         }
 
-        /* Inputs */
-        .search-input { color: #fff !important; }
-        .search-input::placeholder { color: rgba(255,255,255,0.3); }
-        select option { background: #1e1040; color: #fff; }
+        /* ── Glass card (for stat cards, empty state, etc) ── */
+        .h-glass {
+          background: rgba(255,255,255,0.07);
+          border: 1px solid rgba(255,255,255,0.12);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          border-radius: 20px;
+        }
+        .h-glass-warm {
+          background: linear-gradient(135deg, rgba(139,92,246,0.18), rgba(109,40,217,0.1));
+          border: 1px solid rgba(167,139,250,0.25);
+          backdrop-filter: blur(16px);
+          border-radius: 20px;
+        }
 
-        /* Skeletons */
-        .skel { background: rgba(255,255,255,0.07); border-radius: 8px; animation: shimmer 1.4s ease infinite; }
-        @keyframes shimmer { 0%,100%{opacity:.5} 50%{opacity:1} }
-
-        /* Skeleton card */
-        .skel-card {
+        /* ── Skeleton ── */
+        .h-skel { border-radius: 10px; animation: hShimmer 1.6s ease infinite; }
+        .h-skel-bg { background: rgba(167,139,250,0.12); }
+        .h-skel-card {
           background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 20px; overflow: hidden;
+          border: 1px solid rgba(167,139,250,0.1);
+          border-radius: 20px;
+          overflow: hidden;
+        }
+        @keyframes hShimmer {
+          0%,100% { opacity: .45; }
+          50%      { opacity: .85; }
         }
 
-        /* Fade up */
-        @keyframes fadeUp {
-          from { opacity:0; transform: translateY(18px); }
-          to   { opacity:1; transform: translateY(0); }
+        /* ── Animations ── */
+        @keyframes hFadeUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-        .fade-up { animation: fadeUp .5s ease both; }
+        .h-fade-up { animation: hFadeUp .55s ease both; }
 
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+        @keyframes hPulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+        /* ── Input placeholder ── */
+        .h-input::placeholder { color: rgba(196,181,253,.35); }
+        .h-input:focus { border-color: rgba(167,139,250,.7) !important; box-shadow: 0 0 0 3px rgba(139,92,246,.18) !important; }
+
+        /* ── Scrollbar hide ── */
+        .h-cats { scrollbar-width: none; }
+        .h-cats::-webkit-scrollbar { display: none; }
+
+        /* ── Campaign card wrapper hover ── */
+        .h-card-wrap {
+          transition: transform .22s ease;
+        }
+        .h-card-wrap:hover { transform: translateY(-4px); }
       `}</style>
 
-      {/* ─── FULL-PAGE FIXED BACKGROUND ─────────────────────────────── */}
-      <div className="home-bg">
-        <img
-          src="https://images.unsplash.com/photo-1542435503-ec7b0f6b5d3c?w=1800&q=85"
-          alt=""
-          loading="eager"
-        />
-        <div className="home-bg-overlay" />
-        <div className="home-bg-dots" />
-        {/* Glow blobs */}
-        <div className="blob" style={{ top:'-5%', left:'22%', width:550, height:550,
-          background:'radial-gradient(circle, rgba(124,58,237,.2) 0%, transparent 70%)' }} />
-        <div className="blob" style={{ bottom:'15%', right:'8%', width:400, height:400,
-          background:'radial-gradient(circle, rgba(79,70,229,.14) 0%, transparent 70%)' }} />
-        <div className="blob" style={{ top:'55%', left:'45%', width:320, height:320,
-          background:'radial-gradient(circle, rgba(168,85,247,.1) 0%, transparent 70%)' }} />
-      </div>
+      {/* ── Decorative orbs ── */}
+      <div className="h-orb" style={{ top:'-8%', left:'15%', width:600, height:600,
+        background:'radial-gradient(circle, rgba(167,139,250,.22) 0%, transparent 65%)' }} />
+      <div className="h-orb" style={{ top:'30%', right:'-5%', width:450, height:450,
+        background:'radial-gradient(circle, rgba(139,92,246,.16) 0%, transparent 65%)' }} />
+      <div className="h-orb" style={{ bottom:'10%', left:'5%', width:400, height:400,
+        background:'radial-gradient(circle, rgba(109,40,217,.18) 0%, transparent 65%)' }} />
+      <div className="h-orb" style={{ top:'60%', left:'45%', width:300, height:300,
+        background:'radial-gradient(circle, rgba(196,181,253,.1) 0%, transparent 65%)' }} />
 
-      {/* ─── PAGE CONTENT ───────────────────────────────────────────── */}
-      <div className="home-page home-content">
+      <div className="h-page">
 
-        {/* ══ HERO ══ */}
-        <section className="hero">
-          <div className="hero-inner">
+        {/* ════════════════════════════════════════
+            HERO
+        ════════════════════════════════════════ */}
+        <section className="h-hero">
+          <div className="h-hero-inner">
 
-            {/* Left */}
-            <div className="fade-up">
-              {/* Live badge */}
+            {/* Left — copy */}
+            <div className="h-fade-up">
+
+              {/* Badge */}
               <div style={{
-                display:'inline-flex', alignItems:'center', gap:8,
-                background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)',
-                borderRadius:999, padding:'5px 15px', marginBottom:'1.4rem',
+                display:'inline-flex', alignItems:'center', gap:8, marginBottom:'1.5rem',
+                background:'rgba(139,92,246,0.18)', border:'1px solid rgba(167,139,250,0.3)',
+                borderRadius:999, padding:'6px 16px',
               }}>
                 <span style={{ width:8, height:8, borderRadius:'50%', background:'#4ade80',
-                  display:'inline-block', animation:'pulse 2s infinite' }} />
-                <span style={{ fontSize:'.78rem', fontWeight:500, color:'rgba(255,255,255,.82)',
-                  letterSpacing:'.04em', fontFamily:'system-ui,sans-serif' }}>
+                  display:'inline-block', animation:'hPulse 2s infinite' }} />
+                <span style={{ fontSize:'.78rem', fontWeight:600, color:'rgba(196,181,253,.9)',
+                  letterSpacing:'.04em' }}>
                   {verifiedCampaigns.length} verified campaigns · Live on Ethereum
                 </span>
               </div>
 
               {/* Headline */}
               <h1 style={{
-                fontSize:'clamp(2.5rem,5.5vw,3.8rem)', fontWeight:900,
-                lineHeight:1.06, letterSpacing:'-.025em',
-                color:'#fff', margin:'0 0 1rem',
-                fontFamily:'system-ui,sans-serif',
+                fontSize:'clamp(2.6rem,5.5vw,4rem)',
+                fontWeight:900, lineHeight:1.05, letterSpacing:'-.025em',
+                color:'#fff', margin:'0 0 1.1rem',
               }}>
                 Fund ideas that<br/>
                 <span style={{
-                  background:'linear-gradient(90deg,#c4b5fd 0%,#a78bfa 50%,#f0abfc 100%)',
+                  background:'linear-gradient(90deg, #e9d5ff 0%, #c4b5fd 35%, #a78bfa 65%, #f0abfc 100%)',
                   WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text',
                 }}>change the world</span>
               </h1>
 
-              {/* Sub */}
+              {/* Subtext */}
               <p style={{
-                fontSize:'clamp(.95rem,2vw,1.05rem)', color:'rgba(255,255,255,.5)',
-                lineHeight:1.75, maxWidth:490, margin:'0 0 2rem',
-                fontFamily:'system-ui,sans-serif',
+                fontSize:'clamp(.95rem,2vw,1.08rem)', color:'rgba(196,181,253,.65)',
+                lineHeight:1.8, maxWidth:500, margin:'0 0 2rem',
               }}>
-                Browse verified campaigns. Donate with ETH or UPI.
-                Every transaction is transparent and immutably on-chain.
+                Browse verified campaigns. Support causes that matter with ETH or UPI.
+                Every donation is transparent, secure, and on-chain.
               </p>
 
-              {/* CTAs */}
+              {/* CTA buttons */}
               <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginBottom:'2rem' }}>
                 {account ? (
-                  <button onClick={() => navigate('/campaign/create')} style={BTN.primary}>
+                  <button onClick={() => navigate('/campaign/create')} style={S.btnPrimary}
+                    onMouseEnter={e => { e.currentTarget.style.transform='scale(1.04)'; e.currentTarget.style.boxShadow='0 10px 32px rgba(139,92,246,.6)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform='scale(1)'; e.currentTarget.style.boxShadow='0 6px 22px rgba(139,92,246,.45)' }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/>
                     </svg>
                     Start a campaign
                   </button>
                 ) : (
-                  <button onClick={connectWallet} style={BTN.primary}>
+                  <button onClick={connectWallet} style={S.btnPrimary}
+                    onMouseEnter={e => { e.currentTarget.style.transform='scale(1.04)'; e.currentTarget.style.boxShadow='0 10px 32px rgba(139,92,246,.6)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform='scale(1)'; e.currentTarget.style.boxShadow='0 6px 22px rgba(139,92,246,.45)' }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <rect x="2" y="7" width="20" height="14" rx="3"/>
                       <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
@@ -250,38 +297,56 @@ export default function Home() {
                     Connect wallet
                   </button>
                 )}
-                <button onClick={() => document.getElementById('grid')?.scrollIntoView({ behavior:'smooth' })}
-                  style={BTN.ghost}>
+                <button
+                  onClick={() => document.getElementById('grid')?.scrollIntoView({ behavior:'smooth' })}
+                  style={S.btnGhost}
+                  onMouseEnter={e => { e.currentTarget.style.background='rgba(139,92,246,0.2)'; e.currentTarget.style.borderColor='rgba(167,139,250,.5)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,0.07)'; e.currentTarget.style.borderColor='rgba(255,255,255,.18)' }}>
                   Browse campaigns ↓
                 </button>
               </div>
 
-              {/* Trust row */}
-              <div style={{ display:'flex', gap:'1.25rem', flexWrap:'wrap' }}>
-                {['🔒 Smart contract secured','⚡ Instant withdrawals','🔄 Auto refunds','₹ UPI accepted'].map(t => (
-                  <span key={t} style={{ fontSize:'.77rem', color:'rgba(255,255,255,.36)', fontFamily:'system-ui,sans-serif' }}>{t}</span>
+              {/* Trust pills */}
+              <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                {[
+                  { icon:'🔒', text:'Smart contract secured' },
+                  { icon:'⚡', text:'Instant withdrawals' },
+                  { icon:'🔄', text:'Auto refunds' },
+                  { icon:'₹', text:'UPI accepted' },
+                ].map(t => (
+                  <span key={t.text} style={{
+                    display:'inline-flex', alignItems:'center', gap:5,
+                    background:'rgba(139,92,246,0.12)', border:'1px solid rgba(167,139,250,0.2)',
+                    borderRadius:999, padding:'4px 11px',
+                    fontSize:'.74rem', fontWeight:500, color:'rgba(196,181,253,.75)',
+                  }}>
+                    <span>{t.icon}</span> {t.text}
+                  </span>
                 ))}
               </div>
             </div>
 
             {/* Right — stat cards */}
-            <div className="hero-stats" style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              {STATS.map((s, i) => (
-                <div key={s.label} className="fade-up" style={{ animationDelay:`${i*80}ms`,
-                  display:'flex', alignItems:'center', gap:14,
-                  background:'rgba(255,255,255,0.07)',
-                  border:'1px solid rgba(255,255,255,0.11)',
-                  borderRadius:20, padding:'14px 22px', minWidth:210,
-                  backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)',
-                }}>
-                  <span style={{ fontSize:'1.65rem' }}>{s.icon}</span>
+            <div className="h-stat-col" style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              {[
+                { icon:'🚀', label:'Live campaigns',   value:`${verifiedCampaigns.length}+`, color:'#c4b5fd' },
+                { icon:'⟠',  label:'ETH raised',        value:totalRaised.toFixed(3),          color:'#93c5fd' },
+                { icon:'🔒', label:'Refund protected', value:'100%',                           color:'#6ee7b7' },
+              ].map((s, i) => (
+                <div key={s.label} className="h-fade-up h-glass-warm"
+                  style={{ animationDelay:`${i*90}ms`, padding:'18px 22px',
+                    display:'flex', alignItems:'center', gap:14 }}>
+                  <div style={{
+                    width:44, height:44, borderRadius:14,
+                    background:'rgba(139,92,246,0.25)',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:'1.3rem', flexShrink:0,
+                  }}>{s.icon}</div>
                   <div>
-                    <p style={{ fontFamily:'system-ui,sans-serif', fontSize:'1.4rem', fontWeight:900, color:'#fff', lineHeight:1, margin:0 }}>
-                      {s.value}
-                    </p>
-                    <p style={{ fontFamily:'system-ui,sans-serif', fontSize:'.72rem', color:'rgba(255,255,255,.36)', margin:'3px 0 0' }}>
-                      {s.label}
-                    </p>
+                    <p style={{ fontSize:'1.5rem', fontWeight:900, color:s.color,
+                      lineHeight:1, margin:0 }}>{s.value}</p>
+                    <p style={{ fontSize:'.72rem', color:'rgba(196,181,253,.5)',
+                      margin:'3px 0 0' }}>{s.label}</p>
                   </div>
                 </div>
               ))}
@@ -289,40 +354,40 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ══ STICKY FILTER BAR ══ */}
-        <div className="filter-bar">
-          <div className="filter-inner">
-            <div className="filter-row1">
+        {/* ════════════════════════════════════════
+            FILTER BAR
+        ════════════════════════════════════════ */}
+        <div className="h-filterbar">
+          <div className="h-filterbar-inner">
+            <div className="h-filterrow">
 
               {/* Search */}
-              <div style={{ position:'relative', flex:1, minWidth:180 }}>
+              <div style={{ position:'relative', flex:1, minWidth:200 }}>
                 <svg style={{ position:'absolute', left:13, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}
                   width="14" height="14" viewBox="0 0 24 24" fill="none"
-                  stroke="rgba(255,255,255,.3)" strokeWidth="2">
+                  stroke="rgba(167,139,250,.45)" strokeWidth="2">
                   <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
                 </svg>
                 <input
                   type="text" value={search} onChange={e => setSearch(e.target.value)}
                   placeholder="Search campaigns..."
-                  className="search-input"
+                  className="h-input"
                   style={{
                     width:'100%', boxSizing:'border-box',
                     paddingLeft:36, paddingRight: search ? 34 : 14,
                     paddingTop:9, paddingBottom:9,
-                    background:'rgba(255,255,255,0.07)',
-                    border:'1px solid rgba(255,255,255,0.1)',
-                    borderRadius:999, outline:'none',
-                    fontFamily:'system-ui,sans-serif', fontSize:'.85rem',
-                    transition:'border-color .15s',
+                    background:'rgba(139,92,246,0.12)',
+                    border:'1px solid rgba(167,139,250,0.2)',
+                    borderRadius:999, outline:'none', transition:'all .2s',
+                    fontSize:'.85rem', color:'#e9d5ff',
                   }}
-                  onFocus={e => e.target.style.borderColor='rgba(167,139,250,.6)'}
-                  onBlur={e  => e.target.style.borderColor='rgba(255,255,255,.1)'}
                 />
                 {search && (
-                  <button onClick={() => setSearch('')}
-                    style={{ position:'absolute', right:11, top:'50%', transform:'translateY(-50%)',
-                      background:'none', border:'none', cursor:'pointer',
-                      color:'rgba(255,255,255,.4)', padding:0 }}>
+                  <button onClick={() => setSearch('')} style={{
+                    position:'absolute', right:11, top:'50%', transform:'translateY(-50%)',
+                    background:'none', border:'none', cursor:'pointer',
+                    color:'rgba(167,139,250,.5)', padding:0,
+                  }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <path d="M18 6 6 18M6 6l12 12"/>
                     </svg>
@@ -333,74 +398,73 @@ export default function Home() {
               {/* Status tabs */}
               <div style={{
                 display:'flex', gap:2, padding:3,
-                background:'rgba(255,255,255,0.05)',
-                border:'1px solid rgba(255,255,255,0.08)',
-                borderRadius:13,
+                background:'rgba(139,92,246,0.12)',
+                border:'1px solid rgba(167,139,250,0.18)',
+                borderRadius:14,
               }}>
                 {FILTERS.map(f => (
                   <button key={f} onClick={() => setFilter(f)} style={{
                     padding:'7px 15px', border:'none', cursor:'pointer',
-                    fontFamily:'system-ui,sans-serif', fontSize:'.78rem', fontWeight:600,
-                    textTransform:'capitalize', borderRadius:10, transition:'all .15s',
+                    fontSize:'.78rem', fontWeight:600,
+                    textTransform:'capitalize', borderRadius:11, transition:'all .18s',
                     ...(filter === f
-                      ? { background:'rgba(124,58,237,.88)', color:'#fff', boxShadow:'0 2px 8px rgba(124,58,237,.4)' }
-                      : { background:'transparent', color:'rgba(255,255,255,.4)' })
+                      ? { background:'linear-gradient(135deg,#7c3aed,#6d28d9)', color:'#fff', boxShadow:'0 3px 12px rgba(124,58,237,.45)' }
+                      : { background:'transparent', color:'rgba(196,181,253,.45)' })
                   }}>{f}</button>
                 ))}
               </div>
 
               {/* Sort */}
               <select value={sort} onChange={e => setSort(e.target.value)} style={{
-                background:'rgba(255,255,255,0.07)',
-                border:'1px solid rgba(255,255,255,0.1)',
+                background:'rgba(139,92,246,0.12)',
+                border:'1px solid rgba(167,139,250,0.2)',
                 borderRadius:999, padding:'8px 14px', outline:'none', cursor:'pointer',
-                fontFamily:'system-ui,sans-serif', fontSize:'.8rem',
-                color:'rgba(255,255,255,.7)',
+                fontSize:'.8rem', color:'rgba(196,181,253,.8)',
+                transition:'border-color .2s',
               }}>
                 {SORT_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                  <option key={o.value} value={o.value} style={{ background:'#2d1b6b' }}>{o.label}</option>
                 ))}
               </select>
             </div>
 
             {/* Category pills */}
-            <div style={{ display:'flex', gap:6, overflowX:'auto', paddingBottom:2, scrollbarWidth:'none' }}>
+            <div className="h-cats" style={{ display:'flex', gap:7, overflowX:'auto', paddingBottom:2 }}>
               {CATEGORIES.map(cat => (
                 <button key={cat} onClick={() => setCategory(cat)} style={{
-                  flexShrink:0, padding:'5px 14px', border:'none', cursor:'pointer',
-                  fontFamily:'system-ui,sans-serif', fontSize:'.75rem', fontWeight:600,
-                  borderRadius:999, transition:'all .15s',
+                  flexShrink:0, padding:'5px 15px', border:'none', cursor:'pointer',
+                  fontSize:'.75rem', fontWeight:600,
+                  borderRadius:999, transition:'all .18s',
                   ...(category === cat
-                    ? { background:'linear-gradient(135deg,#7c3aed,#6d28d9)', color:'#fff', boxShadow:'0 3px 10px rgba(124,58,237,.45)' }
-                    : { background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,.45)' })
+                    ? { background:'linear-gradient(135deg,#8b5cf6,#7c3aed)', color:'#fff', boxShadow:'0 4px 14px rgba(139,92,246,.5)' }
+                    : { background:'rgba(139,92,246,0.1)', border:'1px solid rgba(167,139,250,0.18)', color:'rgba(196,181,253,.6)' })
                 }}>{cat}</button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* ══ CAMPAIGN GRID ══ */}
-        <section id="grid" className="grid-section">
+        {/* ════════════════════════════════════════
+            CAMPAIGN GRID
+        ════════════════════════════════════════ */}
+        <section id="grid" className="h-grid-section">
 
-          {/* Results header */}
+          {/* Results line */}
           {!loading && !error && (
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-              marginBottom:'1.25rem', flexWrap:'wrap', gap:8 }}>
-              <p style={{ fontFamily:'system-ui,sans-serif', fontSize:'.875rem',
-                color:'rgba(255,255,255,.38)', margin:0 }}>
+              marginBottom:'1.4rem', flexWrap:'wrap', gap:8 }}>
+              <p style={{ fontSize:'.875rem', color:'rgba(196,181,253,.45)', margin:0 }}>
                 {filtered.length === 0 ? 'No campaigns found' : (
-                  <><strong style={{ color:'rgba(255,255,255,.85)', fontWeight:700 }}>{filtered.length}</strong>
+                  <><strong style={{ color:'rgba(233,213,255,.9)', fontWeight:700 }}>{filtered.length}</strong>
                   {' '}campaign{filtered.length !== 1 ? 's' : ''} found</>
                 )}
                 {category !== 'All' && (
-                  <> in <span style={{ color:'#a78bfa', fontWeight:600 }}>{category}</span></>
+                  <> in <span style={{ color:'#c4b5fd', fontWeight:600 }}>{category}</span></>
                 )}
               </p>
               {hasFilters && (
-                <button onClick={clearFilters}
-                  style={{ background:'none', border:'none', cursor:'pointer',
-                    fontFamily:'system-ui,sans-serif', fontSize:'.8rem', fontWeight:600,
-                    color:'#a78bfa', padding:0 }}>
+                <button onClick={clearFilters} style={{ background:'none', border:'none', cursor:'pointer',
+                  fontSize:'.8rem', fontWeight:600, color:'#a78bfa', padding:0 }}>
                   Clear filters ×
                 </button>
               )}
@@ -409,17 +473,17 @@ export default function Home() {
 
           {/* Loading skeletons */}
           {loading && (
-            <div className="campaign-grid">
+            <div className="h-campaign-grid">
               {[...Array(6)].map((_,i) => (
-                <div key={i} className="skel-card">
-                  <div className="skel" style={{ height:188 }} />
-                  <div style={{ padding:'1rem', display:'flex', flexDirection:'column', gap:10 }}>
-                    <div className="skel" style={{ height:18, width:'75%' }} />
-                    <div className="skel" style={{ height:13, width:'45%' }} />
-                    <div className="skel" style={{ height:5, marginTop:6 }} />
+                <div key={i} className="h-skel-card">
+                  <div className="h-skel h-skel-bg" style={{ height:190 }} />
+                  <div style={{ padding:'1.1rem', display:'flex', flexDirection:'column', gap:11 }}>
+                    <div className="h-skel h-skel-bg" style={{ height:19, width:'72%' }} />
+                    <div className="h-skel h-skel-bg" style={{ height:13, width:'48%' }} />
+                    <div className="h-skel h-skel-bg" style={{ height:5, marginTop:4 }} />
                     <div style={{ display:'flex', justifyContent:'space-between' }}>
-                      <div className="skel" style={{ height:13, width:'38%' }} />
-                      <div className="skel" style={{ height:13, width:'22%' }} />
+                      <div className="h-skel h-skel-bg" style={{ height:13, width:'36%' }} />
+                      <div className="h-skel h-skel-bg" style={{ height:13, width:'20%' }} />
                     </div>
                   </div>
                 </div>
@@ -431,58 +495,54 @@ export default function Home() {
           {error && (
             <div style={{ textAlign:'center', padding:'4rem 1.5rem' }}>
               <div style={{
-                width:56, height:56, borderRadius:16, margin:'0 auto 1rem',
+                width:60, height:60, borderRadius:18, margin:'0 auto 1.1rem',
                 display:'flex', alignItems:'center', justifyContent:'center',
-                background:'rgba(239,68,68,0.12)', border:'1px solid rgba(239,68,68,0.25)',
+                background:'rgba(239,68,68,0.15)', border:'1px solid rgba(239,68,68,0.3)',
               }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.5">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="1.5">
                   <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
                 </svg>
               </div>
-              <p style={{ color:'#fff', fontWeight:600, fontFamily:'system-ui,sans-serif', marginBottom:'.4rem' }}>
-                Something went wrong
-              </p>
-              <p style={{ color:'rgba(239,68,68,.8)', fontSize:'.875rem', fontFamily:'system-ui,sans-serif', marginBottom:'1.25rem' }}>
-                {error}
-              </p>
-              <button onClick={refetch} style={BTN.primary}>Try again</button>
+              <p style={{ color:'#e9d5ff', fontWeight:700, fontSize:'1.05rem', marginBottom:'.4rem' }}>Something went wrong</p>
+              <p style={{ color:'rgba(248,113,113,.85)', fontSize:'.875rem', marginBottom:'1.5rem' }}>{error}</p>
+              <button onClick={refetch} style={S.btnPrimary}>Try again</button>
             </div>
           )}
 
           {/* Empty state */}
           {!loading && !error && filtered.length === 0 && (
             <div style={{
-              textAlign:'center', padding:'4rem 1.5rem',
-              background:'rgba(255,255,255,0.04)',
-              border:'1px solid rgba(255,255,255,0.08)',
-              borderRadius:24,
+              textAlign:'center', padding:'4.5rem 2rem',
+              background:'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(109,40,217,0.07))',
+              border:'1px solid rgba(167,139,250,0.2)',
+              borderRadius:28,
             }}>
-              <div style={{ fontSize:'2.8rem', marginBottom:'1rem' }}>🌱</div>
-              <h3 style={{ fontFamily:'system-ui,sans-serif', fontWeight:800, fontSize:'1.25rem', color:'#fff', marginBottom:'.5rem' }}>
+              <div style={{ fontSize:'3rem', marginBottom:'1rem' }}>🌱</div>
+              <h3 style={{ fontWeight:800, fontSize:'1.3rem', color:'#e9d5ff', marginBottom:'.55rem' }}>
                 No campaigns found
               </h3>
-              <p style={{ fontFamily:'system-ui,sans-serif', color:'rgba(255,255,255,.38)', fontSize:'.9rem', marginBottom:'1.5rem' }}>
+              <p style={{ color:'rgba(196,181,253,.5)', fontSize:'.9rem', marginBottom:'1.75rem', maxWidth:340, margin:'0 auto 1.75rem' }}>
                 {search ? `Nothing matches "${search}"` : verifiedCampaigns.length === 0
-                  ? 'No verified campaigns yet. Be the first!'
-                  : 'Try adjusting your filters.'}
+                  ? 'No verified campaigns yet. Be the first to start one!'
+                  : 'Try different filters or search terms.'}
               </p>
               <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
                 {hasFilters && (
-                  <button onClick={clearFilters} style={BTN.ghost}>Clear filters</button>
+                  <button onClick={clearFilters} style={S.btnGhost}>Clear filters</button>
                 )}
-                <button onClick={() => navigate('/campaign/create')} style={BTN.primary}>
+                <button onClick={() => navigate('/campaign/create')} style={S.btnPrimary}>
                   Create a campaign
                 </button>
               </div>
             </div>
           )}
 
-          {/* Campaign grid */}
+          {/* Grid */}
           {!loading && !error && filtered.length > 0 && (
-            <div className="campaign-grid">
+            <div className="h-campaign-grid">
               {filtered.map((campaign, i) => (
-                <div key={campaign.contractAddress} className="fade-up"
-                  style={{ animationDelay:`${Math.min(i,9)*55}ms` }}>
+                <div key={campaign.contractAddress} className="h-card-wrap h-fade-up"
+                  style={{ animationDelay:`${Math.min(i,9)*60}ms` }}>
                   <CampaignCard
                     campaign={campaign}
                     onClick={() => navigate(`/campaign/${campaign.contractAddress}`)}
@@ -492,39 +552,47 @@ export default function Home() {
             </div>
           )}
 
-          {/* Bottom CTA for guests */}
+          {/* Bottom CTA */}
           {!account && !loading && (
             <div style={{
               marginTop:'3.5rem', position:'relative', overflow:'hidden',
               borderRadius:28,
-              border:'1px solid rgba(124,58,237,0.3)',
+              background:'linear-gradient(135deg, rgba(109,40,217,0.6), rgba(79,70,229,0.4), rgba(139,92,246,0.5))',
+              border:'1px solid rgba(167,139,250,0.3)',
+              boxShadow:'0 8px 40px rgba(109,40,217,0.3)',
             }}>
-              <img
-                src="https://images.unsplash.com/photo-1553729459-efe14ef6055d?w=1200&q=80"
-                alt=""
-                style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }}
-              />
-              <div style={{ position:'absolute', inset:0,
-                background:'linear-gradient(135deg,rgba(15,5,40,.95),rgba(45,18,85,.9))' }} />
+              {/* Shimmer overlay */}
+              <div style={{
+                position:'absolute', inset:0, pointerEvents:'none',
+                background:'linear-gradient(135deg, rgba(255,255,255,.04), rgba(255,255,255,.01))',
+                backgroundImage:'radial-gradient(rgba(255,255,255,.06) 1px, transparent 1px)',
+                backgroundSize:'24px 24px',
+              }} />
               <div style={{
                 position:'relative', zIndex:1,
                 display:'flex', flexWrap:'wrap', alignItems:'center',
                 justifyContent:'space-between', gap:'1.5rem',
-                padding:'2.25rem 2rem',
+                padding:'2.5rem 2rem',
               }}>
                 <div>
-                  <h3 style={{ fontFamily:'system-ui,sans-serif', fontWeight:900,
-                    fontSize:'1.6rem', color:'#fff', margin:'0 0 .45rem' }}>
+                  <h3 style={{ fontWeight:900, fontSize:'1.7rem', color:'#fff', margin:'0 0 .5rem' }}>
                     Ready to make an impact?
                   </h3>
-                  <p style={{ fontFamily:'system-ui,sans-serif', color:'rgba(255,255,255,.42)',
-                    fontSize:'.9rem', maxWidth:380, margin:0 }}>
+                  <p style={{ color:'rgba(233,213,255,.55)', fontSize:'.92rem', maxWidth:400, margin:0, lineHeight:1.65 }}>
                     Connect your wallet to donate with ETH, or create an account to launch your own verified campaign.
                   </p>
                 </div>
                 <div style={{ display:'flex', gap:10, flexShrink:0, flexWrap:'wrap' }}>
-                  <button onClick={connectWallet} style={BTN.primary}>Connect wallet</button>
-                  <button onClick={() => navigate('/login')} style={BTN.ghost}>Create account</button>
+                  <button onClick={connectWallet} style={S.btnPrimary}
+                    onMouseEnter={e => e.currentTarget.style.transform='scale(1.04)'}
+                    onMouseLeave={e => e.currentTarget.style.transform='scale(1)'}>
+                    Connect wallet
+                  </button>
+                  <button onClick={() => navigate('/login')} style={{ ...S.btnGhost }}
+                    onMouseEnter={e => { e.currentTarget.style.background='rgba(139,92,246,0.25)'; e.currentTarget.style.borderColor='rgba(167,139,250,.4)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor='rgba(255,255,255,.2)' }}>
+                    Create account
+                  </button>
                 </div>
               </div>
             </div>
@@ -537,24 +605,21 @@ export default function Home() {
   )
 }
 
-/* ── Button style objects ── */
-const BTN = {
-  primary: {
+const S = {
+  btnPrimary: {
     display:'inline-flex', alignItems:'center', gap:7,
-    padding:'11px 24px', border:'none', borderRadius:999,
-    background:'linear-gradient(135deg,#7c3aed,#6d28d9)',
-    color:'#fff', fontFamily:'system-ui,sans-serif',
-    fontSize:'.88rem', fontWeight:700, cursor:'pointer',
-    boxShadow:'0 6px 22px rgba(124,58,237,.45)',
-    transition:'transform .15s, box-shadow .15s',
+    padding:'11px 26px', border:'none', borderRadius:999,
+    background:'linear-gradient(135deg, #8b5cf6, #7c3aed, #6d28d9)',
+    color:'#fff', fontSize:'.88rem', fontWeight:700, cursor:'pointer',
+    boxShadow:'0 6px 22px rgba(139,92,246,.45)',
+    transition:'transform .18s, box-shadow .18s',
   },
-  ghost: {
+  btnGhost: {
     display:'inline-flex', alignItems:'center', gap:7,
-    padding:'11px 24px', borderRadius:999,
-    background:'rgba(255,255,255,0.08)',
-    border:'1px solid rgba(255,255,255,0.18)',
-    color:'rgba(255,255,255,.85)', fontFamily:'system-ui,sans-serif',
-    fontSize:'.88rem', fontWeight:600, cursor:'pointer',
-    transition:'all .15s',
+    padding:'11px 26px', borderRadius:999,
+    background:'rgba(255,255,255,0.07)',
+    border:'1px solid rgba(255,255,255,.18)',
+    color:'rgba(233,213,255,.85)', fontSize:'.88rem', fontWeight:600,
+    cursor:'pointer', transition:'all .18s',
   },
 }
