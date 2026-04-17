@@ -11,116 +11,151 @@ import { getDocumentsForCategory } from '../utils/campaignDocuments'
 const STEPS = ['Details', 'Goal & Deadline', 'Image', 'Documents', 'Review']
 const API   = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
-// ── Get auth token — single source of truth ───────────────────────────────────
 function getAuthToken() {
   return localStorage.getItem('admin_token') || null
 }
 
-// ── Payment type selector ─────────────────────────────────────────────────────
+/* ══════════════════════════════════════════════════════
+   PAYMENT TYPE SELECTOR
+══════════════════════════════════════════════════════ */
 const PaymentTypeSelector = ({ onSelect }) => (
-  <div className="max-w-2xl mx-auto">
-    <div className="mb-8 text-center">
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Create a campaign</h1>
-      <p className="text-gray-500 text-sm">First, choose how donors will contribute to your campaign.</p>
+  <div style={{ maxWidth: 640, margin: '0 auto' }}>
+    <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+      <h1 style={{
+        fontFamily: 'var(--font-serif)',
+        fontSize: 'clamp(1.5rem, 4vw, 2rem)',
+        color: 'var(--text-primary)', marginBottom: '.5rem',
+      }}>Create a campaign</h1>
+      <p style={{ fontSize: '.875rem', color: 'var(--text-muted)' }}>
+        First, choose how donors will contribute to your campaign.
+      </p>
     </div>
 
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      {/* ETH option */}
-      <button
-        onClick={() => onSelect('eth')}
-        className="group relative text-left border-2 border-gray-200 hover:border-purple-400 rounded-2xl p-6 transition-all hover:shadow-md"
-      >
-        <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-100 transition-colors">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L4 12.5l8 4.5 8-4.5L12 2z" fill="#7c3aed" opacity="0.9"/>
-            <path d="M4 12.5L12 17l8-4.5" stroke="#7c3aed" strokeWidth="1.5" fill="none"/>
-            <path d="M12 17v5M4 12.5l8 2 8-2" stroke="#7c3aed" strokeWidth="1.5" fill="none" opacity="0.5"/>
-          </svg>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+      {/* ETH */}
+      <button onClick={() => onSelect('eth')} className="cc-type-card" style={{ '--card-accent': '#7c3aed', '--card-light': 'rgba(124,58,237,0.08)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+          <div style={{ width: 48, height: 48, background: 'rgba(124,58,237,0.12)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L4 12.5l8 4.5 8-4.5L12 2z" fill="#7c3aed" opacity=".9"/>
+              <path d="M4 12.5L12 17l8-4.5" stroke="#7c3aed" strokeWidth="1.5" fill="none"/>
+              <path d="M12 17v5M4 12.5l8 2 8-2" stroke="#7c3aed" strokeWidth="1.5" fill="none" opacity=".5"/>
+            </svg>
+          </div>
+          <div className="cc-radio"/>
         </div>
-        <h3 className="font-semibold text-gray-900 mb-1">Crypto (ETH)</h3>
-        <p className="text-sm text-gray-500 leading-relaxed">
+        <h3 style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 .5rem', fontSize: '1rem' }}>
+          Crypto (ETH)
+        </h3>
+        <p style={{ fontSize: '.82rem', color: 'var(--text-muted)', lineHeight: 1.65, margin: '0 0 1rem' }}>
           Accept donations in Ethereum via MetaMask. Goal set in ETH. Funds go directly to your wallet on-chain.
         </p>
-        <div className="mt-4 flex flex-wrap gap-1.5">
-          <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">MetaMask</span>
-          <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">Sepolia testnet</span>
-          <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">Goal in ETH</span>
-        </div>
-        <div className="absolute top-4 right-4 w-6 h-6 rounded-full border-2 border-gray-200 group-hover:border-purple-400 group-hover:bg-purple-400 transition-all flex items-center justify-center">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <path d="M20 6L9 17l-5-5"/>
-          </svg>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {['MetaMask', 'Sepolia testnet', 'Goal in ETH'].map(t => (
+            <span key={t} className="cc-pill cc-pill-purple">{t}</span>
+          ))}
         </div>
       </button>
 
-      {/* UPI / Card option */}
-      <button
-        onClick={() => onSelect('fiat')}
-        className="group relative text-left border-2 border-gray-200 hover:border-blue-400 rounded-2xl p-6 transition-all hover:shadow-md"
-      >
-        <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.8">
-            <rect x="2" y="5" width="20" height="14" rx="3"/>
-            <path d="M2 10h20"/>
-            <path d="M6 15h4M14 15h4" strokeLinecap="round"/>
-          </svg>
+      {/* UPI */}
+      <button onClick={() => onSelect('fiat')} className="cc-type-card" style={{ '--card-accent': '#2563eb', '--card-light': 'rgba(37,99,235,0.08)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+          <div style={{ width: 48, height: 48, background: 'rgba(37,99,235,0.12)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.8">
+              <rect x="2" y="5" width="20" height="14" rx="3"/>
+              <path d="M2 10h20"/><path d="M6 15h4M14 15h4" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div className="cc-radio"/>
         </div>
-        <h3 className="font-semibold text-gray-900 mb-1">UPI / Card (₹)</h3>
-        <p className="text-sm text-gray-500 leading-relaxed">
+        <h3 style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 .5rem', fontSize: '1rem' }}>
+          UPI / Card (₹)
+        </h3>
+        <p style={{ fontSize: '.82rem', color: 'var(--text-muted)', lineHeight: 1.65, margin: '0 0 1rem' }}>
           Accept donations in Indian Rupees via UPI or credit/debit card. Goal set in ₹. Powered by Stripe.
         </p>
-        <div className="mt-4 flex flex-wrap gap-1.5">
-          <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">UPI</span>
-          <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">Credit / Debit card</span>
-          <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">Goal in ₹</span>
-        </div>
-        <div className="absolute top-4 right-4 w-6 h-6 rounded-full border-2 border-gray-200 group-hover:border-blue-400 group-hover:bg-blue-400 transition-all flex items-center justify-center">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <path d="M20 6L9 17l-5-5"/>
-          </svg>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {['UPI', 'Credit / Debit card', 'Goal in ₹'].map(t => (
+            <span key={t} className="cc-pill cc-pill-blue">{t}</span>
+          ))}
         </div>
       </button>
     </div>
 
-    <p className="text-center text-xs text-gray-400 mt-6">
+    <p style={{ textAlign: 'center', fontSize: '.78rem', color: 'var(--text-subtle)', marginTop: '1.25rem' }}>
       This cannot be changed after the campaign is created.
     </p>
   </div>
 )
 
-// ── Payment type badge ────────────────────────────────────────────────────────
+/* ══════════════════════════════════════════════════════
+   PAYMENT TYPE BADGE
+══════════════════════════════════════════════════════ */
 const PaymentTypeBadge = ({ paymentType, onReset }) => (
-  <div className="flex items-center justify-between mb-6">
-    <h1 className="text-2xl font-bold text-gray-900">Create a campaign</h1>
-    <button
-      onClick={onReset}
-      className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
-        paymentType === 'eth'
-          ? 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
-          : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
-      }`}
-    >
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: 10 }}>
+    <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 'clamp(1.35rem, 4vw, 1.75rem)', color: 'var(--text-primary)', margin: 0 }}>
+      Create a campaign
+    </h1>
+    <button onClick={onReset} style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '5px 12px', borderRadius: 'var(--r-full)',
+      border: `1px solid ${paymentType === 'eth' ? 'var(--purple-200)' : '#bfdbfe'}`,
+      background: paymentType === 'eth' ? 'var(--purple-50)' : '#eff6ff',
+      color: paymentType === 'eth' ? 'var(--purple-700)' : '#1d4ed8',
+      fontFamily: 'var(--font-sans)', fontSize: '.75rem', fontWeight: 600,
+      cursor: 'pointer',
+    }}>
       {paymentType === 'eth' ? (
-        <>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2L4 12.5l8 4.5 8-4.5L12 2z"/>
-          </svg>
-          ETH campaign
-        </>
+        <><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4 12.5l8 4.5 8-4.5L12 2z"/></svg> ETH campaign</>
       ) : (
-        <>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="2" y="5" width="20" height="14" rx="3"/>
-            <path d="M2 10h20"/>
-          </svg>
-          UPI / Card campaign
-        </>
+        <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg> UPI / Card campaign</>
       )}
-      <span className="opacity-50 ml-1">✕ change</span>
+      <span style={{ opacity: .5, marginLeft: 2 }}>✕ change</span>
     </button>
   </div>
 )
 
+/* ══════════════════════════════════════════════════════
+   STEPPER
+══════════════════════════════════════════════════════ */
+const Stepper = ({ step }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: '2rem' }}>
+    {STEPS.map((label, i) => (
+      <div key={i} style={{ display: 'flex', alignItems: 'center', flex: i < STEPS.length - 1 ? 1 : 'none' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '.78rem', fontWeight: 700, transition: 'all .2s',
+            background: i < step ? 'var(--purple-600)' : i === step ? 'var(--purple-600)' : 'var(--bg-muted)',
+            color: i <= step ? '#fff' : 'var(--text-subtle)',
+            boxShadow: i === step ? '0 0 0 4px rgba(124,58,237,0.18)' : 'none',
+          }}>
+            {i < step ? (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
+            ) : i + 1}
+          </div>
+          <span style={{
+            fontFamily: 'var(--font-sans)', fontSize: '.68rem', marginTop: 5, whiteSpace: 'nowrap',
+            color: i === step ? 'var(--purple-600)' : 'var(--text-subtle)',
+            fontWeight: i === step ? 600 : 400,
+          }}>{label}</span>
+        </div>
+        {i < STEPS.length - 1 && (
+          <div style={{
+            flex: 1, height: 2, margin: '0 6px 18px',
+            background: i < step ? 'var(--purple-600)' : 'var(--border)',
+            borderRadius: 1, transition: 'background .3s',
+          }}/>
+        )}
+      </div>
+    ))}
+  </div>
+)
+
+/* ══════════════════════════════════════════════════════
+   MAIN COMPONENT
+══════════════════════════════════════════════════════ */
 const CreateCampaign = () => {
   const navigate = useNavigate()
   const { account, connectWallet, wrongNetwork, switchNetwork } = useWallet()
@@ -134,40 +169,27 @@ const CreateCampaign = () => {
   const [imageFile, setImageFile]       = useState(null)
   const [uploadedDocs, setUploadedDocs] = useState({})
   const [docPreviews, setDocPreviews]   = useState({})
-  const [createdCampaignId, setCreatedCampaignId] = useState(null)
   const [form, setForm] = useState({
     title: '', description: '', goal: '', deadline: '', category: 'Technology',
   })
   const [errors, setErrors] = useState({})
 
-  const categories = ['Technology', 'Environment', 'Education', 'Health', 'Community', 'Arts']
+  const categories  = ['Technology', 'Environment', 'Education', 'Health', 'Community', 'Arts']
   const isETH  = paymentType === 'eth'
   const isFiat = paymentType === 'fiat'
 
-  // ── Safely read user fields regardless of JWT payload shape ──────────────
   const userName     = user?.name     || user?.fullName || ''
   const userUsername = user?.username || user?.userName || ''
-  const userEmail    = user?.email    || user?.emailAddress || ''
-  const userPhone    = user?.phone    || user?.phoneNumber  || ''
+  const userEmail    = user?.email    || ''
+  const userPhone    = user?.phone    || ''
 
   const set = (key, val) => {
-    setForm((f) => ({ ...f, [key]: val }))
-    setErrors((e) => ({ ...e, [key]: '' }))
+    setForm(f => ({ ...f, [key]: val }))
+    setErrors(e => ({ ...e, [key]: '' }))
   }
 
-  const handleTypeSelect = (type) => {
-    setPaymentType(type)
-    setStep(0)
-    setForm(f => ({ ...f, goal: '' }))
-    setErrors({})
-  }
-
-  const handleTypeReset = () => {
-    setPaymentType(null)
-    setStep(0)
-    setForm(f => ({ ...f, goal: '' }))
-    setErrors({})
-  }
+  const handleTypeSelect = (type) => { setPaymentType(type); setStep(0); setForm(f => ({ ...f, goal: '' })); setErrors({}) }
+  const handleTypeReset  = () =>     { setPaymentType(null); setStep(0); setForm(f => ({ ...f, goal: '' })); setErrors({}) }
 
   const validateStep = () => {
     const e = {}
@@ -178,628 +200,574 @@ const CreateCampaign = () => {
       if (form.description.length < 50) e.description = 'Description must be at least 50 characters.'
     }
     if (step === 1) {
-      if (!form.goal || parseFloat(form.goal) <= 0) {
-        e.goal = isETH ? 'Enter a valid goal in ETH.' : 'Enter a valid goal amount in ₹.'
-      }
-      if (isFiat && parseFloat(form.goal) < 100) {
+      if (!form.goal || parseFloat(form.goal) <= 0)
+        e.goal = isETH ? 'Enter a valid goal in ETH.' : 'Enter a valid goal in ₹.'
+      if (isFiat && parseFloat(form.goal) < 100)
         e.goal = 'Minimum goal is ₹100.'
-      }
       if (!form.deadline) e.deadline = 'Select a deadline.'
       else if (new Date(form.deadline) <= new Date()) e.deadline = 'Deadline must be in the future.'
     }
     if (step === 3) {
       const config = getDocumentsForCategory(form.category)
       if (config) {
-        const requiredDocs = config.documents.filter(d => d.required)
-        const missingDocs  = requiredDocs.filter(d => !uploadedDocs[d.id])
-        if (missingDocs.length > 0) {
-          e.documents = `Please upload required documents: ${missingDocs.map(d => d.name).join(', ')}`
-        }
+        const missing = config.documents.filter(d => d.required && !uploadedDocs[d.id])
+        if (missing.length) e.documents = `Upload required docs: ${missing.map(d => d.name).join(', ')}`
       }
     }
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
-  const next = () => { if (validateStep()) setStep((s) => s + 1) }
-  const back = () => setStep((s) => s - 1)
+  const next = () => { if (validateStep()) setStep(s => s + 1) }
+  const back = () => setStep(s => s - 1)
 
   const handleImage = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
+    const file = e.target.files[0]; if (!file) return
     if (file.size > 5 * 1024 * 1024) { setErrors({ image: 'Image must be under 5MB.' }); return }
-    setImageFile(file)
-    setImagePreview(URL.createObjectURL(file))
+    setImageFile(file); setImagePreview(URL.createObjectURL(file))
   }
 
   const handleDocFile = (docId, e) => {
-    const file = e.target.files[0]
-    if (!file) return
-    setUploadedDocs(prev => ({ ...prev, [docId]: file }))
+    const file = e.target.files[0]; if (!file) return
+    setUploadedDocs(p => ({ ...p, [docId]: file }))
     if (file.type.startsWith('image/')) {
       const reader = new FileReader()
-      reader.onload = (ev) => setDocPreviews(p => ({ ...p, [docId]: { type: 'image', url: ev.target.result } }))
+      reader.onload = ev => setDocPreviews(p => ({ ...p, [docId]: { type: 'image', url: ev.target.result } }))
       reader.readAsDataURL(file)
     } else {
       setDocPreviews(p => ({ ...p, [docId]: { type: 'file', name: file.name } }))
     }
-    setErrors(prev => ({ ...prev, documents: '' }))
+    setErrors(p => ({ ...p, documents: '' }))
   }
 
   const removeDoc = (docId) => {
     const d = { ...uploadedDocs }; delete d[docId]
-    const p = { ...docPreviews };  delete p[docId]
+    const p = { ...docPreviews  }; delete p[docId]
     setUploadedDocs(d); setDocPreviews(p)
   }
 
-  // ── Upload documents — uses admin_token directly ──────────────────────────
   const uploadDocumentsToBackend = async (campaignId) => {
     if (!Object.keys(uploadedDocs).length) return
-
-    const token = getAuthToken()
-    if (!token) {
-      console.warn('✗ No auth token — documents not uploaded. Please log in.')
-      return
-    }
-
+    const token = getAuthToken(); if (!token) return
     try {
-      const formData = new FormData()
-      Object.entries(uploadedDocs).forEach(([docId, file]) => {
-        formData.append(docId, file)
+      const fd = new FormData()
+      Object.entries(uploadedDocs).forEach(([id, file]) => fd.append(id, file))
+      await axios.post(`${API}/campaigns/${campaignId}/documents`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` },
       })
-
-      const { data } = await axios.post(
-        `${API}/campaigns/${campaignId}/documents`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            Authorization:  `Bearer ${token}`,
-          },
-        }
-      )
-      console.log('✓ Documents uploaded:', data.message)
-    } catch (err) {
-      console.warn('✗ Document upload failed:', err.response?.data?.message || err.message)
-    }
+    } catch (err) { console.warn('Doc upload failed:', err.message) }
   }
 
-  // ── Build owner payload from user context ─────────────────────────────────
-  const ownerPayload = () => ({
-    ownerName:     userName,
-    ownerUsername: userUsername,
-    ownerEmail:    userEmail,
-    ownerPhone:    userPhone,
-  })
+  const ownerPayload = () => ({ ownerName: userName, ownerUsername: userUsername, ownerEmail: userEmail, ownerPhone: userPhone })
 
-  // ── ETH campaign: deploys on-chain ────────────────────────────────────────
   const handleSubmitETH = async () => {
     if (!account) { connectWallet(); return }
     if (wrongNetwork) { switchNetwork(); return }
-
     setTxStatus('uploading')
     try {
       let imageHash = ''
       if (imageFile) imageHash = await uploadImage(imageFile)
-
       setTxStatus('pending')
-
       const provider   = new ethers.BrowserProvider(window.ethereum)
       const _signer    = await provider.getSigner()
       const factory    = new ethers.Contract(CONTRACT_ADDRESS, FACTORY_ABI, _signer)
       const deadlineTs = Math.floor(new Date(form.deadline).getTime() / 1000)
-      const goalWei    = ethers.parseEther(form.goal)
-
-      const tx      = await factory.createCampaign(form.title, form.description, imageHash, goalWei, deadlineTs)
-      const receipt = await tx.wait()
-      const event   = receipt.logs.find(l => l.fragment?.name === 'CampaignCreated')
-
+      const tx         = await factory.createCampaign(form.title, form.description, imageHash, ethers.parseEther(form.goal), deadlineTs)
+      const receipt    = await tx.wait()
+      const event      = receipt.logs.find(l => l.fragment?.name === 'CampaignCreated')
       if (event) {
         try {
           const { data } = await axios.post(`${API}/campaigns`, {
             contractAddress: event.args.campaignAddress,
-            factoryIndex:    Number(event.args.index),
-            owner:           account,
-            ...ownerPayload(),
-            title:           form.title,
-            description:     form.description,
-            imageHash,
-            category:        form.category,
-            goal:            form.goal,
-            deadline:        deadlineTs,
-            txHash:          receipt.hash,
-            paymentType:     'eth',
+            factoryIndex: Number(event.args.index),
+            owner: account, ...ownerPayload(),
+            title: form.title, description: form.description, imageHash,
+            category: form.category, goal: form.goal, deadline: deadlineTs,
+            txHash: receipt.hash, paymentType: 'eth',
           })
-
           const campaignId = data?._id || data?.data?._id
-          if (campaignId) {
-            setCreatedCampaignId(campaignId)
-            await uploadDocumentsToBackend(campaignId)
-          }
-        } catch (backendErr) {
-          console.warn('Backend save failed:', backendErr.response?.data?.message || backendErr.message)
-        }
+          if (campaignId) await uploadDocumentsToBackend(campaignId)
+        } catch(e) { console.warn('Backend save failed:', e.message) }
       }
-
       setTxStatus('success')
       setTimeout(() => navigate('/app'), 2500)
-    } catch (err) {
-      console.error(err)
-      setTxStatus('error')
-      setTimeout(() => setTxStatus(null), 4000)
-    }
+    } catch(err) { console.error(err); setTxStatus('error'); setTimeout(() => setTxStatus(null), 4000) }
   }
 
-  // ── Fiat campaign: no on-chain tx ─────────────────────────────────────────
   const handleSubmitFiat = async () => {
     setTxStatus('uploading')
     try {
       let imageHash = ''
       if (imageFile) imageHash = await uploadImage(imageFile)
-
       setTxStatus('pending')
-
       const deadlineTs    = Math.floor(new Date(form.deadline).getTime() / 1000)
-      const pseudoAddress = `0xfiat_${(account || 'nowal').toLowerCase().slice(2, 10)}_${Date.now()}`
-
+      const pseudoAddress = `0xfiat_${(account||'nowal').toLowerCase().slice(2,10)}_${Date.now()}`
       const { data } = await axios.post(`${API}/campaigns`, {
-        contractAddress: pseudoAddress,
-        factoryIndex:    null,
-        owner:           account || 'unknown',
-        ...ownerPayload(),
-        title:           form.title,
-        description:     form.description,
-        imageHash,
-        category:        form.category,
-        goal:            parseFloat(form.goal),
-        deadline:        deadlineTs,
-        txHash:          '',
-        paymentType:     'fiat',
+        contractAddress: pseudoAddress, factoryIndex: null,
+        owner: account || 'unknown', ...ownerPayload(),
+        title: form.title, description: form.description, imageHash,
+        category: form.category, goal: parseFloat(form.goal), deadline: deadlineTs,
+        txHash: '', paymentType: 'fiat',
       })
-
       const campaignId = data?._id || data?.data?._id
-      if (campaignId) {
-        setCreatedCampaignId(campaignId)
-        await uploadDocumentsToBackend(campaignId)
-      }
-
+      if (campaignId) await uploadDocumentsToBackend(campaignId)
       setTxStatus('success')
       setTimeout(() => navigate('/app'), 2500)
-    } catch (err) {
-      console.error(err)
-      setTxStatus('error')
-      setTimeout(() => setTxStatus(null), 4000)
-    }
+    } catch(err) { console.error(err); setTxStatus('error'); setTimeout(() => setTxStatus(null), 4000) }
   }
 
-  const handleSubmit = () => {
-    if (isETH)  return handleSubmitETH()
-    if (isFiat) return handleSubmitFiat()
-  }
+  const handleSubmit = () => isETH ? handleSubmitETH() : handleSubmitFiat()
+  const deadlineMin  = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
 
-  const deadlineMin = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-
-  const categoryColors = {
-    Technology:  { bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-700'   },
-    Education:   { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700' },
-    Health:      { bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-700'    },
-    Environment: { bg: 'bg-green-50',  border: 'border-green-200',  text: 'text-green-700'  },
-    Community:   { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-700' },
-    Arts:        { bg: 'bg-pink-50',   border: 'border-pink-200',   text: 'text-pink-700'   },
-  }
-
+  /* ── Wallet guards ── */
   if (isETH && !account) return (
-    <div className="flex flex-col items-center justify-center py-32 gap-4">
-      <p className="text-gray-500">Connect your wallet to create an ETH campaign.</p>
-      <button onClick={connectWallet} className="bg-purple-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-purple-700">
-        Connect wallet
-      </button>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh', gap: 16 }}>
+      <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>Connect your wallet to create an ETH campaign.</p>
+      <button onClick={connectWallet} className="btn btn-primary">Connect wallet</button>
     </div>
   )
-
   if (isETH && wrongNetwork) return (
-    <div className="flex flex-col items-center justify-center py-32 gap-4">
-      <p className="text-gray-500">Please switch to Sepolia Test Network to continue.</p>
-      <button onClick={switchNetwork} className="bg-red-500 text-white px-6 py-3 rounded-xl font-medium hover:bg-red-600">
-        Switch to Sepolia
-      </button>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh', gap: 16 }}>
+      <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>Please switch to Sepolia Test Network.</p>
+      <button onClick={switchNetwork} style={{ background: '#ef4444' }} className="btn">Switch to Sepolia</button>
     </div>
   )
 
-  // ── Show type selector ────────────────────────────────────────────────────
-  if (!paymentType) {
-    return (
-      <div className="max-w-2xl mx-auto">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 text-sm mb-6">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
+  /* ── Type selector ── */
+  if (!paymentType) return (
+    <>
+      <style>{CC_STYLES}</style>
+      <div style={{ maxWidth: 700, margin: '0 auto', paddingBottom: '4rem' }}>
+        <button onClick={() => navigate(-1)} className="cc-back-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           Back
         </button>
-        <PaymentTypeSelector onSelect={handleTypeSelect} />
+        <PaymentTypeSelector onSelect={handleTypeSelect}/>
       </div>
-    )
-  }
+    </>
+  )
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 text-sm mb-6">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M19 12H5M12 19l-7-7 7-7"/>
-        </svg>
-        Back
-      </button>
+    <>
+      <style>{CC_STYLES}</style>
+      <div style={{ maxWidth: 680, margin: '0 auto', paddingBottom: '4rem' }}>
+        <button onClick={() => navigate(-1)} className="cc-back-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Back
+        </button>
 
-      <PaymentTypeBadge paymentType={paymentType} onReset={handleTypeReset} />
+        <PaymentTypeBadge paymentType={paymentType} onReset={handleTypeReset}/>
+        <Stepper step={step}/>
 
-      {/* Stepper */}
-      <div className="flex items-center gap-0 mb-8">
-        {STEPS.map((label, i) => (
-          <div key={i} className="flex items-center flex-1 last:flex-none">
-            <div className="flex flex-col items-center">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
-                i < step   ? 'bg-purple-600 text-white' :
-                i === step ? 'bg-purple-600 text-white ring-4 ring-purple-100' :
-                             'bg-gray-100 text-gray-400'
-              }`}>
-                {i < step ? (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M20 6L9 17l-5-5"/>
-                  </svg>
-                ) : i + 1}
+        {/* ── STEP 0: Details ── */}
+        {step === 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div className="cc-field">
+              <label className="cc-label">Campaign title</label>
+              <input value={form.title} onChange={e => set('title', e.target.value)}
+                placeholder="A clear, descriptive title" className="cc-input"/>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                {errors.title ? <span className="cc-error">{errors.title}</span> : <span/>}
+                <span style={{ fontSize: '.72rem', color: 'var(--text-subtle)', marginLeft: 'auto' }}>{form.title.length}/80</span>
               </div>
-              <span className={`text-xs mt-1 whitespace-nowrap ${i === step ? 'text-purple-600 font-medium' : 'text-gray-400'}`}>
-                {label}
-              </span>
             </div>
-            {i < STEPS.length - 1 && (
-              <div className={`flex-1 h-px mx-2 mb-4 ${i < step ? 'bg-purple-400' : 'bg-gray-200'}`} />
-            )}
-          </div>
-        ))}
-      </div>
 
-      {/* ── Step 0: Details ── */}
-      {step === 0 && (
-        <div className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Campaign title</label>
-            <input type="text" value={form.title} onChange={(e) => set('title', e.target.value)}
-              placeholder="A clear, descriptive title"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-400" />
-            <div className="flex justify-between mt-1">
-              {errors.title ? <p className="text-red-500 text-xs">{errors.title}</p> : <span />}
-              <span className="text-xs text-gray-400 ml-auto">{form.title.length}/80</span>
+            <div className="cc-field">
+              <label className="cc-label">Description</label>
+              <textarea rows={5} value={form.description} onChange={e => set('description', e.target.value)}
+                placeholder="Tell people what you're building and why it matters (min. 50 characters)"
+                className="cc-textarea"/>
+              {errors.description && <span className="cc-error">{errors.description}</span>}
             </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea rows={5} value={form.description} onChange={(e) => set('description', e.target.value)}
-              placeholder="Tell people what you're building and why it matters (min. 50 characters)"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-400 resize-none" />
-            {errors.description && <p className="text-red-500 text-xs mt-1">{errors.description}</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((cat) => (
-                <button key={cat} onClick={() => set('category', cat)}
-                  className={`px-4 py-2 rounded-lg text-sm capitalize transition-colors ${
-                    form.category === cat ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}>
-                  {cat}
-                </button>
-              ))}
+            <div className="cc-field">
+              <label className="cc-label">Category</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {categories.map(cat => (
+                  <button key={cat} onClick={() => set('category', cat)} style={{
+                    padding: '7px 16px', borderRadius: 'var(--r-full)',
+                    border: `1.5px solid ${form.category === cat ? 'var(--purple-600)' : 'var(--border)'}`,
+                    background: form.category === cat ? 'var(--purple-600)' : 'var(--bg-muted)',
+                    color: form.category === cat ? '#fff' : 'var(--text-muted)',
+                    fontFamily: 'var(--font-sans)', fontSize: '.82rem', fontWeight: 600,
+                    cursor: 'pointer', transition: 'all .15s', minHeight: 36,
+                  }}>{cat}</button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ── Step 1: Goal & Deadline ── */}
-      {step === 1 && (
-        <div className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Funding goal {isETH ? '(ETH)' : '(₹ INR)'}
+        {/* ── STEP 1: Goal & Deadline ── */}
+        {step === 1 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div className="cc-field">
+              <label className="cc-label">Funding goal {isETH ? '(ETH)' : '(₹ INR)'}</label>
+              <div style={{ position: 'relative' }}>
+                {isFiat && <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: '.9rem', fontWeight: 600, color: 'var(--text-muted)' }}>₹</span>}
+                <input type="number" min={isETH ? '0.001' : '100'} step={isETH ? '0.001' : '1'}
+                  value={form.goal} onChange={e => set('goal', e.target.value)}
+                  placeholder={isETH ? 'e.g. 0.5' : 'e.g. 50000'}
+                  className="cc-input"
+                  style={{ paddingLeft: isFiat ? 28 : 14, paddingRight: 56 }}/>
+                <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', fontSize: '.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  {isETH ? 'ETH' : 'INR'}
+                </span>
+              </div>
+              {errors.goal && <span className="cc-error">{errors.goal}</span>}
+            </div>
+
+            <div className="cc-field">
+              <label className="cc-label">Deadline</label>
+              <input type="date" min={deadlineMin} value={form.deadline}
+                onChange={e => set('deadline', e.target.value)} className="cc-input"/>
+              {errors.deadline && <span className="cc-error">{errors.deadline}</span>}
+            </div>
+
+            <div className={`cc-info-box ${isETH ? 'cc-info-amber' : 'cc-info-blue'}`}>
+              {isETH
+                ? 'If your goal is met before the deadline, you can withdraw all funds. If not, funders can claim a full refund after the deadline.'
+                : 'Donors will pay via UPI or card in Indian Rupees. Funds are collected via Stripe and can be withdrawn once the goal is met.'
+              }
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 2: Image ── */}
+        {step === 2 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <label className="cc-label">Campaign image <span style={{ color: 'var(--text-subtle)', fontWeight: 400 }}>(optional)</span></label>
+            <label style={{ cursor: 'pointer', display: 'block' }}>
+              <div className="cc-upload-area" style={{ height: 220, borderColor: imagePreview ? 'var(--purple-400)' : 'var(--border)' }}>
+                {imagePreview ? (
+                  <img src={imagePreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 14 }}/>
+                ) : (
+                  <>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--purple-400)" strokeWidth="1.5" style={{ marginBottom: 8 }}>
+                      <rect x="3" y="3" width="18" height="18" rx="3"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <path d="M21 15l-5-5L5 21"/>
+                    </svg>
+                    <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.875rem', color: 'var(--text-muted)', margin: 0 }}>Click to upload image</p>
+                    <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.75rem', color: 'var(--text-subtle)', margin: '4px 0 0' }}>PNG, JPG up to 5MB</p>
+                  </>
+                )}
+              </div>
+              <input type="file" accept="image/*" onChange={handleImage} style={{ display: 'none' }}/>
             </label>
-            <div className="relative">
-              {isFiat && (
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">₹</span>
-              )}
-              <input
-                type="number"
-                min={isETH ? '0.001' : '100'}
-                step={isETH ? '0.001' : '1'}
-                value={form.goal}
-                onChange={(e) => set('goal', e.target.value)}
-                placeholder={isETH ? 'e.g. 0.5' : 'e.g. 50000'}
-                className={`w-full border border-gray-200 rounded-xl py-3 text-sm outline-none focus:border-purple-400 ${
-                  isFiat ? 'pl-8 pr-16' : 'px-4 pr-16'
-                }`}
-              />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
-                {isETH ? 'ETH' : 'INR'}
-              </span>
-            </div>
-            {errors.goal && <p className="text-red-500 text-xs mt-1">{errors.goal}</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
-            <input type="date" min={deadlineMin} value={form.deadline}
-              onChange={(e) => set('deadline', e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-400" />
-            {errors.deadline && <p className="text-red-500 text-xs mt-1">{errors.deadline}</p>}
-          </div>
-
-          {isETH && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
-              If your goal is met before the deadline, you can withdraw all funds.
-              If not, funders can claim a full refund after the deadline.
-            </div>
-          )}
-          {isFiat && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
-              Donors will pay via UPI or card in Indian Rupees.
-              Funds are collected via Stripe and can be withdrawn once the goal is met.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Step 2: Image ── */}
-      {step === 2 && (
-        <div className="space-y-4">
-          <label className="block text-sm font-medium text-gray-700">Campaign image (optional)</label>
-          <label className="block cursor-pointer">
-            <div className={`w-full h-56 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center transition-colors ${
-              imagePreview ? 'border-purple-300' : 'border-gray-200 hover:border-purple-300'
-            }`}>
-              {imagePreview ? (
-                <img src={imagePreview} alt="preview" className="w-full h-full object-cover rounded-2xl" />
-              ) : (
-                <>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.5" className="mb-3">
-                    <rect x="3" y="3" width="18" height="18" rx="3"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <path d="M21 15l-5-5L5 21"/>
-                  </svg>
-                  <p className="text-sm text-gray-500">Click to upload image</p>
-                  <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 5MB</p>
-                </>
-              )}
-            </div>
-            <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
-          </label>
-          {imagePreview && (
-            <button onClick={() => { setImagePreview(null); setImageFile(null) }}
-              className="text-sm text-red-400 hover:text-red-600">
-              Remove image
-            </button>
-          )}
-          {errors.image && <p className="text-red-500 text-xs">{errors.image}</p>}
-        </div>
-      )}
-
-      {/* ── Step 3: Documents ── */}
-      {step === 3 && (() => {
-        const config = getDocumentsForCategory(form.category)
-        const colors = categoryColors[form.category] || categoryColors.Technology
-
-        if (!config) return (
-          <div className="text-center py-12 text-gray-400">
-            No document requirements for this category.
-          </div>
-        )
-
-        return (
-          <div className="space-y-4">
-            <div className={`${colors.bg} ${colors.border} border rounded-xl p-4`}>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xl">{config.icon}</span>
-                <h3 className={`font-semibold ${colors.text}`}>
-                  {config.label} Campaign — Verification Documents
-                </h3>
-              </div>
-              <p className="text-sm text-gray-500">
-                Upload documents to verify your campaign is genuine.
-                Verified campaigns get more trust and donations from donors.
-              </p>
-            </div>
-
-            {config.documents.map((doc) => {
-              const preview = docPreviews[doc.id]
-              const file    = uploadedDocs[doc.id]
-
-              return (
-                <div key={doc.id} className="border border-gray-200 rounded-xl p-4 space-y-2">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-800">{doc.name}</p>
-                        {doc.required
-                          ? <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Required</span>
-                          : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Optional</span>
-                        }
-                      </div>
-                      <p className="text-xs text-gray-400 mt-0.5">{doc.description}</p>
-                      <p className="text-xs text-gray-400 italic">e.g. {doc.example}</p>
-                    </div>
-                  </div>
-
-                  {!file ? (
-                    <label className="block cursor-pointer">
-                      <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 flex flex-col items-center justify-center hover:border-purple-300 hover:bg-purple-50 transition-colors">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" className="mb-2">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                          <polyline points="17 8 12 3 7 8"/>
-                          <line x1="12" y1="3" x2="12" y2="15"/>
-                        </svg>
-                        <p className="text-sm text-gray-500 font-medium">Click to upload</p>
-                        <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG, DOC up to 10MB</p>
-                      </div>
-                      <input type="file" accept={doc.accept} onChange={(e) => handleDocFile(doc.id, e)} className="hidden" />
-                    </label>
-                  ) : (
-                    <div className="border border-green-200 bg-green-50 rounded-xl p-3 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        {preview?.type === 'image' ? (
-                          <img src={preview.url} alt="preview" className="w-10 h-10 object-cover rounded-lg border" />
-                        ) : (
-                          <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2">
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                              <polyline points="14 2 14 8 20 8"/>
-                            </svg>
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-sm text-green-700 font-medium truncate max-w-[200px]">{file.name}</p>
-                          <p className="text-xs text-green-500">{(file.size / 1024).toFixed(1)} KB · Ready to upload ✓</p>
-                        </div>
-                      </div>
-                      <button type="button" onClick={() => removeDoc(doc.id)}
-                        className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50">
-                        Remove
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-
-            {errors.documents && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">
-                ⚠ {errors.documents}
-              </div>
-            )}
-
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-              🔒 Documents are reviewed by admins only and never shown publicly.
-              Your campaign will be marked as <strong>pending verification</strong> until approved.
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* ── Step 4: Review ── */}
-      {step === 4 && (
-        <div className="space-y-4">
-          {txStatus === 'success' ? (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5">
-                  <path d="M20 6L9 17l-5-5"/>
-                </svg>
-              </div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">Campaign created!</h2>
-              <p className="text-gray-500 text-sm mb-1">Your documents have been submitted for admin review.</p>
-              <p className="text-gray-400 text-xs">Redirecting to home page...</p>
-            </div>
-          ) : (
-            <>
-              <div className="bg-gray-50 rounded-2xl p-5 space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Payment type</span>
-                  <span className={`font-medium px-2 py-0.5 rounded-full text-xs ${
-                    isETH ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
-                  }`}>
-                    {isETH ? '◆ ETH / Crypto' : '💳 UPI / Card (₹)'}
-                  </span>
-                </div>
-
-                {userName && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Creator</span>
-                    <span className="font-medium text-gray-900">{userName}</span>
-                  </div>
-                )}
-                {userUsername && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Username</span>
-                    <span className="text-purple-600">@{userUsername}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Title</span>
-                  <span className="font-medium text-gray-900 max-w-xs text-right">{form.title}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Category</span>
-                  <span className="capitalize text-gray-900">{form.category}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Goal</span>
-                  <span className="font-medium text-gray-900">
-                    {isETH ? `${form.goal} ETH` : `₹${Number(form.goal).toLocaleString('en-IN')}`}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Deadline</span>
-                  <span className="text-gray-900">{new Date(form.deadline).toLocaleDateString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Image</span>
-                  <span className="text-gray-900">{imageFile ? imageFile.name : 'None'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Documents</span>
-                  <span className={`font-medium ${Object.keys(uploadedDocs).length > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                    {Object.keys(uploadedDocs).length} uploaded
-                  </span>
-                </div>
-                {account && (
-                  <div className="border-t border-gray-200 pt-3 flex justify-between">
-                    <span className="text-gray-500">Wallet</span>
-                    <span className="font-mono text-xs text-gray-700">{account}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-600">
-                ℹ Your campaign will be visible immediately but marked as
-                <strong> pending verification</strong> until an admin reviews your documents.
-              </div>
-
-              {txStatus === 'error' && (
-                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">
-                  {isETH ? 'Transaction failed. Please try again.' : 'Failed to create campaign. Please try again.'}
-                </div>
-              )}
-
-              <button
-                onClick={handleSubmit}
-                disabled={txStatus === 'uploading' || txStatus === 'pending'}
-                className="w-full bg-purple-600 text-white py-3 rounded-xl font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
-              >
-                {txStatus === 'uploading' ? 'Uploading to IPFS...' :
-                 txStatus === 'pending'   ? (isETH ? 'Confirming transaction...' : 'Creating campaign...') :
-                 isETH                   ? 'Deploy campaign' : 'Create campaign'}
+            {imagePreview && (
+              <button onClick={() => { setImagePreview(null); setImageFile(null) }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--error-500)', fontFamily: 'var(--font-sans)', fontSize: '.82rem', textAlign: 'left', padding: 0 }}>
+                Remove image
               </button>
-            </>
-          )}
-        </div>
-      )}
+            )}
+            {errors.image && <span className="cc-error">{errors.image}</span>}
+          </div>
+        )}
 
-      {/* Nav buttons */}
-      {txStatus !== 'success' && (
-        <div className="flex justify-between mt-8 pt-6 border-t border-gray-100">
-          <button onClick={back} disabled={step === 0}
-            className="px-6 py-2 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 disabled:opacity-30">
-            Back
-          </button>
-          {step < STEPS.length - 1 && (
-            <button onClick={next}
-              className="px-6 py-2 rounded-xl text-sm font-medium bg-purple-600 text-white hover:bg-purple-700">
-              Continue
+        {/* ── STEP 3: Documents ── */}
+        {step === 3 && (() => {
+          const config = getDocumentsForCategory(form.category)
+          if (!config) return (
+            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+              No document requirements for this category.
+            </div>
+          )
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="cc-info-box" style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>{config.icon}</span>
+                <div>
+                  <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: '.875rem', color: 'var(--text-primary)', margin: '0 0 4px' }}>
+                    {config.label} Campaign — Verification Documents
+                  </p>
+                  <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                    Upload documents to verify your campaign is genuine. Verified campaigns get more donations.
+                  </p>
+                </div>
+              </div>
+
+              {config.documents.map(doc => {
+                const preview = docPreviews[doc.id]
+                const file    = uploadedDocs[doc.id]
+                return (
+                  <div key={doc.id} className="cc-doc-card">
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10, gap: 10 }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+                          <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: '.875rem', color: 'var(--text-primary)', margin: 0 }}>{doc.name}</p>
+                          <span className={doc.required ? 'cc-pill cc-pill-red' : 'cc-pill cc-pill-gray'}>
+                            {doc.required ? 'Required' : 'Optional'}
+                          </span>
+                        </div>
+                        <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.75rem', color: 'var(--text-muted)', margin: 0 }}>{doc.description}</p>
+                        <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.72rem', color: 'var(--text-subtle)', fontStyle: 'italic', margin: '2px 0 0' }}>e.g. {doc.example}</p>
+                      </div>
+                    </div>
+                    {!file ? (
+                      <label style={{ cursor: 'pointer', display: 'block' }}>
+                        <div className="cc-upload-area" style={{ padding: '1.25rem', height: 'auto' }}>
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="1.5" style={{ marginBottom: 6 }}>
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                          </svg>
+                          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.82rem', color: 'var(--text-muted)', margin: 0 }}>Click to upload</p>
+                          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.72rem', color: 'var(--text-subtle)', margin: '3px 0 0' }}>PDF, JPG, PNG up to 10MB</p>
+                        </div>
+                        <input type="file" accept={doc.accept} onChange={e => handleDocFile(doc.id, e)} style={{ display: 'none' }}/>
+                      </label>
+                    ) : (
+                      <div style={{
+                        border: '1px solid #bbf7d0', background: 'var(--teal-50)',
+                        borderRadius: 12, padding: '10px 14px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          {preview?.type === 'image' ? (
+                            <img src={preview.url} alt="preview" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }}/>
+                          ) : (
+                            <div style={{ width: 40, height: 40, background: '#dcfce7', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal-600)" strokeWidth="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                              </svg>
+                            </div>
+                          )}
+                          <div>
+                            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.82rem', fontWeight: 600, color: 'var(--teal-700)', margin: '0 0 2px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {file.name}
+                            </p>
+                            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.72rem', color: 'var(--teal-600)', margin: 0 }}>
+                              {(file.size / 1024).toFixed(1)} KB · Ready ✓
+                            </p>
+                          </div>
+                        </div>
+                        <button onClick={() => removeDoc(doc.id)} style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          fontFamily: 'var(--font-sans)', fontSize: '.75rem', fontWeight: 600,
+                          color: 'var(--error-500)', padding: '4px 8px', borderRadius: 6,
+                        }}>Remove</button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {errors.documents && (
+                <div className="cc-info-box cc-info-error">⚠ {errors.documents}</div>
+              )}
+              <div className="cc-info-box cc-info-amber" style={{ fontSize: '.78rem' }}>
+                🔒 Documents are reviewed by admins only and never shown publicly.
+                Your campaign will be marked as <strong>pending verification</strong> until approved.
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* ── STEP 4: Review ── */}
+        {step === 4 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {txStatus === 'success' ? (
+              <div style={{ textAlign: 'center', padding: '3rem 1.5rem' }}>
+                <div style={{ width: 64, height: 64, background: 'var(--teal-50)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--teal-600)" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.4rem', color: 'var(--text-primary)', marginBottom: '.5rem' }}>Campaign created!</h2>
+                <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.875rem', color: 'var(--text-muted)', marginBottom: '.25rem' }}>Your documents have been submitted for admin review.</p>
+                <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.78rem', color: 'var(--text-subtle)' }}>Redirecting to home…</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary card */}
+                <div className="cc-review-card">
+                  {[
+                    ['Payment type', isETH ? '◆ ETH / Crypto' : '💳 UPI / Card (₹)'],
+                    userName     && ['Creator',   userName],
+                    userUsername && ['Username',  `@${userUsername}`],
+                    ['Title',     form.title],
+                    ['Category',  form.category],
+                    ['Goal',      isETH ? `${form.goal} ETH` : `₹${Number(form.goal).toLocaleString('en-IN')}`],
+                    ['Deadline',  new Date(form.deadline).toLocaleDateString()],
+                    ['Image',     imageFile ? imageFile.name : 'None'],
+                    ['Documents', `${Object.keys(uploadedDocs).length} uploaded`],
+                    account && ['Wallet', account],
+                  ].filter(Boolean).map(([label, value]) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '9px 0', borderBottom: '1px solid var(--border-light)', gap: 12, flexWrap: 'wrap' }}>
+                      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '.82rem', color: 'var(--text-muted)', flexShrink: 0 }}>{label}</span>
+                      <span style={{
+                        fontFamily: label === 'Wallet' ? 'monospace' : 'var(--font-sans)',
+                        fontSize: label === 'Wallet' ? '.72rem' : '.82rem',
+                        fontWeight: 500, color: 'var(--text-primary)', textAlign: 'right',
+                        maxWidth: 280, wordBreak: 'break-all',
+                      }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="cc-info-box cc-info-blue" style={{ fontSize: '.78rem' }}>
+                  ℹ Your campaign will be visible immediately but marked as <strong>pending verification</strong> until an admin reviews your documents.
+                </div>
+
+                {txStatus === 'error' && (
+                  <div className="cc-info-box cc-info-error">
+                    {isETH ? 'Transaction failed. Please try again.' : 'Failed to create campaign. Please try again.'}
+                  </div>
+                )}
+
+                <button onClick={handleSubmit}
+                  disabled={txStatus === 'uploading' || txStatus === 'pending'}
+                  className="btn btn-primary"
+                  style={{ width: '100%', minHeight: 52, fontSize: '.95rem', borderRadius: 14, opacity: (txStatus === 'uploading' || txStatus === 'pending') ? .6 : 1 }}>
+                  {txStatus === 'uploading' ? 'Uploading to IPFS…' :
+                   txStatus === 'pending'   ? (isETH ? 'Confirming transaction…' : 'Creating campaign…') :
+                   isETH                   ? '🚀 Deploy campaign' : '🚀 Create campaign'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Nav buttons ── */}
+        {txStatus !== 'success' && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-light)' }}>
+            <button onClick={back} disabled={step === 0} className="btn btn-secondary" style={{ opacity: step === 0 ? .4 : 1 }}>
+              ← Back
             </button>
-          )}
-        </div>
-      )}
-    </div>
+            {step < STEPS.length - 1 && (
+              <button onClick={next} className="btn btn-primary">
+                Continue →
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </>
   )
 }
+
+/* ── Styles ── */
+const CC_STYLES = `
+  .cc-back-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: none; border: none; cursor: pointer;
+    font-family: var(--font-sans); font-size: .875rem;
+    color: var(--text-muted); padding: 4px 0; margin-bottom: 1.25rem;
+    transition: color .15s;
+  }
+  .cc-back-btn:hover { color: var(--text-primary); }
+
+  .cc-type-card {
+    text-align: left; cursor: pointer;
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    border-radius: 20px; padding: 1.5rem;
+    transition: all .2s; position: relative;
+    font-family: var(--font-sans);
+  }
+  .cc-type-card:hover {
+    border-color: var(--card-accent, var(--purple-600));
+    box-shadow: 0 8px 24px rgba(0,0,0,.1);
+    transform: translateY(-2px);
+  }
+  .cc-radio {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid var(--border); background: var(--bg-muted);
+    transition: all .15s; flex-shrink: 0;
+  }
+  .cc-type-card:hover .cc-radio {
+    border-color: var(--card-accent, var(--purple-600));
+    background: var(--card-accent, var(--purple-600));
+    box-shadow: inset 0 0 0 4px var(--bg-card);
+  }
+
+  .cc-pill {
+    font-family: var(--font-sans); font-size: .68rem; font-weight: 600;
+    padding: 2px 9px; border-radius: var(--r-full);
+  }
+  .cc-pill-purple { background: rgba(124,58,237,.1); color: var(--purple-600); }
+  .cc-pill-blue   { background: rgba(37,99,235,.1);  color: #2563eb; }
+  .cc-pill-red    { background: var(--error-50);     color: var(--error-700); }
+  .cc-pill-gray   { background: var(--bg-muted);     color: var(--text-muted); }
+
+  .cc-label {
+    display: block; font-family: var(--font-sans);
+    font-size: .82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: .375rem;
+  }
+  .cc-field { display: flex; flex-direction: column; }
+
+  .cc-input {
+    width: 100%; padding: 11px 14px; box-sizing: border-box;
+    background: var(--bg-muted); border: 1.5px solid var(--border);
+    border-radius: 12px; font-family: var(--font-sans);
+    font-size: .9rem; color: var(--text-primary); outline: none;
+    transition: all .18s; min-height: 46px;
+  }
+  .cc-input::placeholder { color: var(--text-subtle); }
+  .cc-input:focus {
+    border-color: var(--purple-500); background: var(--bg-card);
+    box-shadow: 0 0 0 3px rgba(124,58,237,.1);
+  }
+
+  .cc-textarea {
+    width: 100%; padding: 11px 14px; box-sizing: border-box;
+    background: var(--bg-muted); border: 1.5px solid var(--border);
+    border-radius: 12px; font-family: var(--font-sans);
+    font-size: .9rem; color: var(--text-primary); outline: none;
+    transition: all .18s; resize: none;
+  }
+  .cc-textarea::placeholder { color: var(--text-subtle); }
+  .cc-textarea:focus {
+    border-color: var(--purple-500); background: var(--bg-card);
+    box-shadow: 0 0 0 3px rgba(124,58,237,.1);
+  }
+
+  .cc-error {
+    font-family: var(--font-sans); font-size: .75rem; color: var(--error-500);
+    margin-top: 4px;
+  }
+
+  .cc-upload-area {
+    border: 2px dashed var(--border); border-radius: 14px;
+    background: var(--bg-muted); display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: all .18s; width: 100%;
+  }
+  .cc-upload-area:hover {
+    border-color: var(--purple-400); background: rgba(124,58,237,.04);
+  }
+
+  .cc-info-box {
+    font-family: var(--font-sans); font-size: .82rem; line-height: 1.65;
+    padding: .875rem 1rem; border-radius: 12px;
+    background: var(--bg-muted); border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .cc-info-amber {
+    background: var(--warning-50); border-color: #fde68a; color: #92400e;
+  }
+  .cc-info-blue {
+    background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8;
+  }
+  .cc-info-error {
+    background: var(--error-50); border-color: #fecaca; color: var(--error-700);
+  }
+
+  .cc-doc-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 1rem;
+  }
+
+  .cc-review-card {
+    background: var(--bg-muted); border: 1px solid var(--border);
+    border-radius: 16px; padding: 1.125rem;
+  }
+  .cc-review-card > div:last-child { border-bottom: none !important; }
+
+  /* Dark mode adjustments */
+  [data-theme="dark"] .cc-info-amber { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.2); color: #fbbf24; }
+  [data-theme="dark"] .cc-info-blue  { background: rgba(37,99,235,.1);  border-color: rgba(37,99,235,.2);  color: #93c5fd; }
+  [data-theme="dark"] .cc-pill-purple { background: rgba(124,58,237,.2); }
+  [data-theme="dark"] .cc-pill-blue   { background: rgba(37,99,235,.2); }
+`
 
 export default CreateCampaign
