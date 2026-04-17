@@ -184,7 +184,10 @@ const AdminDashboard = () => {
   }
 
   /* Derived stats */
-  const totalRaised     = campaigns.reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0)
+  const ethCampaigns    = campaigns.filter(c => c.paymentType !== 'fiat')
+  const fiatCampaigns   = campaigns.filter(c => c.paymentType === 'fiat')
+  const totalEthRaised  = ethCampaigns.reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0)
+  const totalInrRaised  = fiatCampaigns.reduce((s, c) => s + parseFloat(c.amountRaised || c.raised || 0), 0)
   const activeCamps     = campaigns.filter(c => !c.paused && Date.now() < c.deadline * 1000).length
   const pendingCampDocs = campaigns.filter(c => c.verificationStatus === 'pending' && c.documents?.length > 0).length
   const pendingUserDocs = users.filter(u => u.document?.url && (!u.document?.status || u.document?.status === 'pending')).length
@@ -447,10 +450,11 @@ const AdminDashboard = () => {
 
           {/* ── Stat cards ── */}
           <div className="adm-stats">
-            <StatCard label="Total Campaigns" value={campaigns.length} icon="📋" color="#ede9fe"/>
-            <StatCard label="Active"           value={activeCamps}     icon="📈" color="#dcfce7"/>
-            <StatCard label="ETH Raised"       value={totalRaised.toFixed(2)} icon="⟠" color="#dbeafe"/>
-            <StatCard label="Total Users"      value={users.length}    icon="👥" color="#fef3c7"/>
+            <StatCard label="Total Campaigns" value={campaigns.length}              icon="📋" color="#ede9fe"/>
+            <StatCard label="Active"           value={activeCamps}                  icon="📈" color="#dcfce7"/>
+            <StatCard label="ETH Raised"       value={`${totalEthRaised.toFixed(3)} ETH`} icon="⟠" color="#dbeafe"/>
+            <StatCard label="UPI / Card Raised" value={`₹${totalInrRaised.toLocaleString('en-IN')}`} icon="💳" color="#fef9c3"/>
+            <StatCard label="Total Users"      value={users.length}                 icon="👥" color="#fef3c7"/>
             <StatCard label="Pending Docs"     value={pendingCampDocs + pendingUserDocs} icon="📄" color="#fee2e2"/>
           </div>
 
@@ -786,7 +790,13 @@ const AdminDashboard = () => {
 
               {/* REFUNDS */}
               {tab === 'refunds' && (
-                <div className="adm-card">
+                <div style={{
+                  background: '#fff',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 20,
+                  padding: 'clamp(1.25rem, 4vw, 2rem)',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+                }}>
                   <RefundManagementPanel/>
                 </div>
               )}
