@@ -7,10 +7,10 @@ import CampaignCard from '../components/CampaignCard'
 const CATEGORIES   = ['All', 'Education', 'Health', 'Technology', 'Environment', 'Community', 'Arts']
 const FILTERS      = ['All', 'Active', 'Expiring', 'Funded']
 const SORT_OPTIONS = [
-  { value: 'newest',   label: 'Newest first' },
-  { value: 'trending', label: 'Most funded'  },
-  { value: 'ending',   label: 'Ending soon'  },
-  { value: 'goal',     label: 'Biggest goal' },
+  { value: 'newest',   label: 'Newest' },
+  { value: 'trending', label: 'Trending' },
+  { value: 'ending',   label: 'Ending Soon' },
+  { value: 'goal',     label: 'Biggest Goal' },
 ]
 
 export default function Home() {
@@ -22,8 +22,8 @@ export default function Home() {
   const [filter,   setFilter]   = useState('All')
   const [category, setCategory] = useState('All')
   const [sort,     setSort]     = useState('newest')
+  const [showSort, setShowSort] = useState(false)
 
-  /* ── derived data ── */
   const verified = useMemo(() =>
     campaigns.filter(c => c.verificationStatus === 'verified' && !c.paused),
   [campaigns])
@@ -34,7 +34,6 @@ export default function Home() {
 
   const filtered = useMemo(() => {
     let list = [...verified]
-
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(c =>
@@ -43,26 +42,24 @@ export default function Home() {
         c.category?.toLowerCase().includes(q)
       )
     }
-
     if (category !== 'All')
       list = list.filter(c => c.category?.toLowerCase() === category.toLowerCase())
 
-    const f = filter.toLowerCase()
     list = list.filter(c => {
       const ms  = c.deadline > 1e12 ? c.deadline : c.deadline * 1000
       const pct = (parseFloat(c.amountRaised || 0) / parseFloat(c.goal || 1)) * 100
       const exp = Date.now() > ms
-      if (f === 'active')   return !exp
-      if (f === 'funded')   return pct >= 100
-      if (f === 'expiring') return !exp && (ms - Date.now()) < 864e5 * 7
+      if (filter === 'Active')   return !exp
+      if (filter === 'Funded')   return pct >= 100
+      if (filter === 'Expiring') return !exp && (ms - Date.now()) < 864e5 * 7
       return true
     })
 
     switch (sort) {
-      case 'trending': list.sort((a, b) => parseFloat(b.amountRaised || 0) - parseFloat(a.amountRaised || 0)); break
-      case 'ending':   list.sort((a, b) => (a.deadline > 1e12 ? a.deadline : a.deadline * 1000) - (b.deadline > 1e12 ? b.deadline : b.deadline * 1000)); break
-      case 'goal':     list.sort((a, b) => parseFloat(b.goal || 0) - parseFloat(a.goal || 0)); break
-      default:         list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      case 'trending': list.sort((a,b) => parseFloat(b.amountRaised||0) - parseFloat(a.amountRaised||0)); break
+      case 'ending':   list.sort((a,b) => (a.deadline>1e12?a.deadline:a.deadline*1000) - (b.deadline>1e12?b.deadline:b.deadline*1000)); break
+      case 'goal':     list.sort((a,b) => parseFloat(b.goal||0) - parseFloat(a.goal||0)); break
+      default:         list.sort((a,b) => (b.createdAt||0) - (a.createdAt||0))
     }
     return list
   }, [verified, search, category, filter, sort])
@@ -72,665 +69,366 @@ export default function Home() {
 
   return (
     <>
-      <style>{`
-        * { box-sizing: border-box; }
-
-        /* ── Hero ── */
-        .fc-hero {
-          position: relative;
-          min-height: 520px;
-          display: flex;
-          align-items: center;
-          overflow: hidden;
-        }
-        .fc-hero-img {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          object-position: center;
-        }
-        .fc-hero-overlay {
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(
-            100deg,
-            rgba(88, 28, 135, 0.88) 0%,
-            rgba(109, 40, 217, 0.75) 35%,
-            rgba(124, 58, 237, 0.60) 60%,
-            rgba(139, 92, 246, 0.45) 100%
-          );
-        }
-        .fc-hero-content {
-          position: relative;
-          z-index: 2;
-          width: 100%;
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: clamp(3rem, 8vw, 5rem) clamp(1.25rem, 4vw, 2rem);
-        }
-
-        /* Hero badge */
-        .fc-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          background: rgba(255,255,255,0.15);
-          border: 1px solid rgba(255,255,255,0.25);
-          border-radius: 999px;
-          padding: 5px 14px;
-          margin-bottom: 1.4rem;
-          font-size: .8rem;
-          font-weight: 600;
-          color: rgba(255,255,255,0.9);
-          letter-spacing: .03em;
-          backdrop-filter: blur(6px);
-        }
-        .fc-badge-dot {
-          width: 8px; height: 8px;
-          border-radius: 50%;
-          background: #4ade80;
-          animation: fcPulse 2s infinite;
-          flex-shrink: 0;
-        }
-
-        /* Hero headline */
-        .fc-h1 {
-          font-family: 'DM Serif Display', Georgia, serif;
-          font-size: clamp(2.5rem, 6vw, 4rem);
-          font-weight: 400;
-          line-height: 1.05;
-          letter-spacing: -.02em;
-          color: #fff;
-          margin: 0 0 1.1rem;
-        }
-        .fc-h1-accent {
-          color: #c4b5fd;
-        }
-
-        /* Hero sub */
-        .fc-sub {
-          font-size: clamp(.95rem, 2vw, 1.05rem);
-          color: rgba(255,255,255,0.72);
-          line-height: 1.75;
-          max-width: 520px;
-          margin: 0 0 2rem;
-        }
-
-        /* Hero CTA row */
-        .fc-cta-row {
-          display: flex;
-          gap: 12px;
-          flex-wrap: wrap;
-          margin-bottom: 2.5rem;
-        }
-        .fc-btn-primary {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 12px 26px;
-          border: none;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.18);
-          border: 2px solid rgba(255,255,255,0.6);
-          color: #fff;
-          font-family: 'DM Sans', system-ui, sans-serif;
-          font-size: .95rem;
-          font-weight: 700;
-          cursor: pointer;
-          backdrop-filter: blur(8px);
-          transition: background .18s, border-color .18s, transform .15s;
-          white-space: nowrap;
-        }
-        .fc-btn-primary:hover {
-          background: rgba(255,255,255,0.28);
-          transform: translateY(-1px);
-        }
-        .fc-btn-ghost {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 12px 26px;
-          border-radius: 999px;
-          background: rgba(109,40,217,0.5);
-          border: 2px solid rgba(255,255,255,0.25);
-          color: rgba(255,255,255,0.9);
-          font-family: 'DM Sans', system-ui, sans-serif;
-          font-size: .95rem;
-          font-weight: 600;
-          cursor: pointer;
-          backdrop-filter: blur(8px);
-          transition: background .18s, transform .15s;
-          white-space: nowrap;
-        }
-        .fc-btn-ghost:hover {
-          background: rgba(109,40,217,0.7);
-          transform: translateY(-1px);
-        }
-
-        /* Hero inline stats row */
-        .fc-stats-row {
-          display: flex;
-          gap: 2.5rem;
-          flex-wrap: wrap;
-          align-items: center;
-        }
-        .fc-stat {
-          display: flex;
-          align-items: baseline;
-          gap: 7px;
-        }
-        .fc-stat-val {
-          font-family: 'DM Serif Display', Georgia, serif;
-          font-size: 1.6rem;
-          font-weight: 400;
-          color: #fff;
-          line-height: 1;
-        }
-        .fc-stat-lbl {
-          font-size: .82rem;
-          color: rgba(255,255,255,0.55);
-          font-weight: 500;
-        }
-
-        /* ── Filter bar — light (matching screenshot 2) ── */
-        .fc-filterbar {
-          background: #fff;
-          border-bottom: 1px solid #e5e7eb;
-          padding: 14px clamp(1.25rem, 4vw, 2rem);
-          position: sticky;
-          top: 0;
-          z-index: 40;
-          box-shadow: 0 1px 6px rgba(0,0,0,0.06);
-        }
-        .fc-filterbar-inner {
-          max-width: 1200px;
-          margin: 0 auto;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-        .fc-search-row {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-          flex-wrap: wrap;
-        }
-        .fc-search-wrap {
-          position: relative;
-          flex: 1;
-          min-width: 200px;
-        }
-        .fc-search {
-          width: 100%;
-          padding: 10px 12px 10px 38px;
-          border: 1.5px solid #e5e7eb;
-          border-radius: 999px;
-          font-family: 'DM Sans', system-ui, sans-serif;
-          font-size: .875rem;
-          color: #111;
-          outline: none;
-          transition: border-color .18s, box-shadow .18s;
-          background: #fff;
-        }
-        .fc-search::placeholder { color: #9ca3af; }
-        .fc-search:focus {
-          border-color: #7c3aed;
-          box-shadow: 0 0 0 3px rgba(124,58,237,.12);
-        }
-
-        /* Filter pill tabs (purple, right side) */
-        .fc-tabs {
-          display: flex;
-          gap: 4px;
-          background: #f3f4f6;
-          border-radius: 999px;
-          padding: 4px;
-          flex-shrink: 0;
-        }
-        .fc-tab {
-          padding: 7px 18px;
-          border: none;
-          border-radius: 999px;
-          font-family: 'DM Sans', system-ui, sans-serif;
-          font-size: .82rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all .18s;
-          white-space: nowrap;
-        }
-        .fc-tab-active {
-          background: #7c3aed;
-          color: #fff;
-          box-shadow: 0 2px 8px rgba(124,58,237,.35);
-        }
-        .fc-tab-inactive {
-          background: transparent;
-          color: #6b7280;
-        }
-        .fc-tab-inactive:hover { background: #e5e7eb; color: #374151; }
-
-        /* Category pills (below search row, outline style) */
-        .fc-cats {
-          display: flex;
-          gap: 8px;
-          overflow-x: auto;
-          scrollbar-width: none;
-          padding-bottom: 2px;
-        }
-        .fc-cats::-webkit-scrollbar { display: none; }
-        .fc-cat {
-          flex-shrink: 0;
-          padding: 6px 16px;
-          border-radius: 999px;
-          border: 1.5px solid #d1d5db;
-          background: #fff;
-          font-family: 'DM Sans', system-ui, sans-serif;
-          font-size: .8rem;
-          font-weight: 500;
-          color: #6b7280;
-          cursor: pointer;
-          transition: all .18s;
-          white-space: nowrap;
-        }
-        .fc-cat:hover { border-color: #7c3aed; color: #7c3aed; }
-        .fc-cat-active {
-          background: #7c3aed;
-          border-color: #7c3aed;
-          color: #fff;
-          font-weight: 700;
-        }
-
-        /* ── Grid section — light bg ── */
-        .fc-grid-section {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 2rem clamp(1.25rem, 4vw, 2rem) 5rem;
-          background: transparent;
-        }
-
-        /* Campaign grid */
-        .fc-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(390px, 1fr));
-          gap: 1.5rem;
-        }
-        @media (max-width: 880px) {
-          .fc-grid { grid-template-columns: 1fr; }
-        }
-
-        /* ── Skeleton ── */
-        .fc-skel {
-          background: linear-gradient(90deg, #f3f4f6 25%, #e9ecef 50%, #f3f4f6 75%);
-          background-size: 200% 100%;
-          animation: fcSkelWave 1.6s ease infinite;
-          border-radius: 8px;
-        }
-        @keyframes fcSkelWave {
-          0%   { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-
-        /* ── Animations ── */
-        @keyframes fcPulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-        @keyframes fcFadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-        .fc-fade-up { animation: fcFadeUp .5s ease both; }
-
-        /* ── Bottom CTA ── */
-        .fc-cta-box {
-          margin-top: 3.5rem;
-          border-radius: 24px;
-          background: linear-gradient(135deg, #581c87 0%, #6d28d9 50%, #7c3aed 100%);
-          padding: 2.5rem 2rem;
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          justify-content: space-between;
-          gap: 1.5rem;
-        }
-        .fc-cta-btn {
-          padding: 12px 26px;
-          border-radius: 999px;
-          font-family: 'DM Sans', system-ui, sans-serif;
-          font-size: .9rem;
-          font-weight: 700;
-          cursor: pointer;
-          transition: transform .15s;
-          white-space: nowrap;
-          border: none;
-        }
-        .fc-cta-btn:hover { transform: translateY(-1px); }
-        .fc-cta-btn-white {
-          background: #fff;
-          color: #6d28d9;
-        }
-        .fc-cta-btn-outline {
-          background: rgba(255,255,255,0.1);
-          border: 1.5px solid rgba(255,255,255,0.3) !important;
-          color: #fff;
-        }
-
-        @media (max-width: 640px) {
-          .fc-hero { min-height: 420px; }
-          .fc-stats-row { gap: 1.5rem; }
-          .fc-cta-box { flex-direction: column; }
-        }
-      `}</style>
-
-      {/* ══════════════════════════════════════
-          HERO (matching screenshot 1)
-      ══════════════════════════════════════ */}
-      <section className="fc-hero">
-        {/* Background photo */}
+      {/* ══ HERO ══ */}
+      <section style={{
+        position: 'relative',
+        minHeight: 'clamp(380px, 55vw, 560px)',
+        display: 'flex', alignItems: 'center',
+        overflow: 'hidden',
+        margin: 'calc(-1 * clamp(1.25rem, 4vw, 2.5rem)) calc(-1 * clamp(1rem, 4vw, 2rem)) 0',
+      }}>
+        {/* BG image */}
         <img
-          className="fc-hero-img"
           src="https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1800&q=80"
           alt=""
+          style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', objectPosition:'center' }}
         />
-        <div className="fc-hero-overlay" />
+        {/* Overlay */}
+        <div style={{
+          position:'absolute', inset:0,
+          background: 'linear-gradient(110deg, rgba(76,29,149,0.9) 0%, rgba(109,40,217,0.75) 50%, rgba(124,58,237,0.55) 100%)',
+        }}/>
 
-        <div className="fc-hero-content fc-fade-up">
+        <div style={{ position:'relative', zIndex:2, width:'100%', padding: 'clamp(2.5rem, 8vw, 5rem) clamp(1.25rem, 4vw, 2rem)' }} className="animate-fade-up">
 
           {/* Live badge */}
-          <div className="fc-badge">
-            <span className="fc-badge-dot" />
+          <div style={{
+            display:'inline-flex', alignItems:'center', gap:8, marginBottom:'1.25rem',
+            background:'rgba(255,255,255,0.12)', backdropFilter:'blur(8px)',
+            border:'1px solid rgba(255,255,255,0.2)', borderRadius:'var(--r-full)',
+            padding:'5px 14px', fontSize:'0.78rem', fontWeight:600,
+            color:'rgba(255,255,255,0.9)',
+          }}>
+            <span style={{ width:8, height:8, background:'#4ade80', borderRadius:'50%', animation:'pulse-dot 2s infinite', display:'inline-block' }}/>
             {verified.length} verified campaigns live
           </div>
 
           {/* Headline */}
-          <h1 className="fc-h1">
-            Fund ideas that<br />
-            <span className="fc-h1-accent">change the world</span>
+          <h1 style={{
+            fontFamily: 'var(--font-serif)',
+            fontSize: 'clamp(2rem, 6vw, 4rem)',
+            fontWeight: 400, color: '#fff',
+            lineHeight: 1.08, letterSpacing: '-0.02em',
+            margin: '0 0 1rem', maxWidth: 660,
+          }}>
+            Fund ideas that<br/>
+            <span style={{ color: '#c4b5fd' }}>change the world</span>
           </h1>
 
-          {/* Sub */}
-          <p className="fc-sub">
-            Browse verified campaigns. Support with ETH or UPI. Every
-            rupee and wei tracked transparently on-chain.
+          {/* Subtitle */}
+          <p style={{
+            fontSize: 'clamp(0.9rem, 2vw, 1.05rem)',
+            color: 'rgba(255,255,255,0.7)',
+            lineHeight: 1.75, maxWidth: 480, marginBottom: '1.75rem',
+          }}>
+            Browse verified campaigns. Support with ETH or UPI. Every transaction tracked transparently on-chain.
           </p>
 
           {/* CTA buttons */}
-          <div className="fc-cta-row">
-            {account ? (
-              <button className="fc-btn-primary" onClick={() => navigate('/campaign/create')}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" />
-                </svg>
-                Start a campaign
-              </button>
-            ) : (
-              <button className="fc-btn-primary" onClick={connectWallet}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" />
-                </svg>
-                Start a campaign
-              </button>
-            )}
+          <div style={{ display:'flex', gap:'0.75rem', flexWrap:'wrap', marginBottom:'2rem' }}>
             <button
-              className="fc-btn-ghost"
-              onClick={() => document.getElementById('fc-grid')?.scrollIntoView({ behavior: 'smooth' })}
+              onClick={() => account ? navigate('/campaign/create') : connectWallet()}
+              style={{
+                display:'inline-flex', alignItems:'center', gap:8,
+                padding:'11px 24px', borderRadius:'var(--r-full)',
+                background:'rgba(255,255,255,0.18)', backdropFilter:'blur(8px)',
+                border:'2px solid rgba(255,255,255,0.6)',
+                color:'#fff', fontFamily:'var(--font-sans)', fontWeight:700, fontSize:'0.92rem',
+                cursor:'pointer', whiteSpace:'nowrap',
+                transition:'all 0.18s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.28)'}
+              onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,0.18)'}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+              Start a campaign
+            </button>
+            <button
+              onClick={() => document.getElementById('fc-grid')?.scrollIntoView({ behavior:'smooth' })}
+              style={{
+                display:'inline-flex', alignItems:'center', gap:8,
+                padding:'11px 24px', borderRadius:'var(--r-full)',
+                background:'rgba(109,40,217,0.45)', backdropFilter:'blur(8px)',
+                border:'2px solid rgba(255,255,255,0.2)',
+                color:'rgba(255,255,255,0.9)', fontFamily:'var(--font-sans)', fontWeight:600, fontSize:'0.92rem',
+                cursor:'pointer', whiteSpace:'nowrap',
+                transition:'all 0.18s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background='rgba(109,40,217,0.65)'}
+              onMouseLeave={e => e.currentTarget.style.background='rgba(109,40,217,0.45)'}
             >
               Browse campaigns ↓
             </button>
           </div>
 
-          {/* Inline stats row (matching screenshot 1 bottom of hero) */}
-          <div className="fc-stats-row">
-            <div className="fc-stat">
-              <span className="fc-stat-val">{verified.length}+</span>
-              <span className="fc-stat-lbl">Campaigns</span>
-            </div>
-            <div className="fc-stat">
-              <span className="fc-stat-val">{totalRaised.toFixed(2)}</span>
-              <span className="fc-stat-lbl">ETH raised</span>
-            </div>
-            <div className="fc-stat">
-              <span className="fc-stat-val">100%</span>
-              <span className="fc-stat-lbl">Refund protected</span>
-            </div>
+          {/* Stats row */}
+          <div style={{ display:'flex', gap:'clamp(1rem, 3vw, 2.5rem)', flexWrap:'wrap' }}>
+            {[
+              { val: `${verified.length}+`, lbl: 'Campaigns' },
+              { val: totalRaised.toFixed(2), lbl: 'ETH raised' },
+              { val: '100%', lbl: 'Refund protected' },
+            ].map(s => (
+              <div key={s.lbl} style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                <span style={{ fontFamily:'var(--font-serif)', fontSize:'clamp(1.3rem, 3vw, 1.75rem)', color:'#fff', lineHeight:1 }}>{s.val}</span>
+                <span style={{ fontSize:'0.78rem', color:'rgba(255,255,255,0.5)', fontWeight:500 }}>{s.lbl}</span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ══════════════════════════════════════
-          FILTER BAR — light (matching screenshot 2)
-      ══════════════════════════════════════ */}
-      <div className="fc-filterbar">
-        <div className="fc-filterbar-inner">
+      {/* ══ FILTER BAR ══ */}
+      <div style={{
+        background: 'var(--bg-card)',
+        borderBottom: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-xs)',
+        position: 'sticky', top: 'var(--navbar-h)', zIndex: 40,
+        margin: '0 calc(-1 * clamp(1rem, 4vw, 2rem))',
+        padding: '0.875rem clamp(1rem, 4vw, 2rem)',
+      }}>
+        {/* Row 1: Search + filter tabs + sort */}
+        <div style={{ display:'flex', gap:'0.625rem', alignItems:'center', flexWrap:'wrap', marginBottom:'0.625rem' }}>
 
-          {/* Row 1: search + filter tabs */}
-          <div className="fc-search-row">
-
-            {/* Search */}
-            <div className="fc-search-wrap">
-              <svg style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-                width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
-                <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-              </svg>
-              <input
-                type="text"
-                className="fc-search"
-                placeholder="Search campaigns by title or description..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-              {search && (
-                <button onClick={() => setSearch('')} style={{
-                  position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0,
-                }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
-
-            {/* Filter tabs (purple pills, right side — matching screenshot 2) */}
-            <div className="fc-tabs">
-              {FILTERS.map(f => (
-                <button
-                  key={f}
-                  className={`fc-tab ${filter === f ? 'fc-tab-active' : 'fc-tab-inactive'}`}
-                  onClick={() => setFilter(f)}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
+          {/* Search */}
+          <div style={{ position:'relative', flex:'1', minWidth:'180px' }}>
+            <svg style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="2">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search campaigns..."
+              style={{
+                width:'100%', padding:'9px 36px', paddingRight: search ? 34 : 12,
+                background:'var(--bg-muted)', border:'1.5px solid transparent',
+                borderRadius:'var(--r-full)', fontFamily:'var(--font-sans)',
+                fontSize:'0.85rem', color:'var(--text-primary)', outline:'none',
+                transition:'all 0.18s', minHeight: 40,
+              }}
+              onFocus={e => { e.target.style.borderColor='var(--purple-400)'; e.target.style.background='var(--bg-card)' }}
+              onBlur={e => { e.target.style.borderColor='transparent'; e.target.style.background='var(--bg-muted)' }}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} style={{
+                position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
+                background:'none', border:'none', cursor:'pointer', color:'var(--text-subtle)', padding:0,
+                display:'flex', alignItems:'center', justifyContent:'center',
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            )}
           </div>
 
-          {/* Row 2: Category pills */}
-          <div className="fc-cats">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                className={`fc-cat ${category === cat ? 'fc-cat-active' : ''}`}
-                onClick={() => setCategory(cat)}
-              >
-                {cat}
+          {/* Filter pills */}
+          <div style={{ display:'flex', gap:'3px', background:'var(--bg-muted)', borderRadius:'var(--r-full)', padding:'3px', flexShrink:0 }}>
+            {FILTERS.map(f => (
+              <button key={f} onClick={() => setFilter(f)} style={{
+                padding:'5px 14px', borderRadius:'var(--r-full)', border:'none',
+                fontFamily:'var(--font-sans)', fontSize:'0.78rem', fontWeight:600,
+                cursor:'pointer', transition:'all 0.15s', whiteSpace:'nowrap',
+                background: filter===f ? 'var(--purple-600)' : 'transparent',
+                color: filter===f ? '#fff' : 'var(--text-muted)',
+                boxShadow: filter===f ? '0 2px 8px rgba(124,58,237,0.3)' : 'none',
+              }}>
+                {f}
               </button>
             ))}
           </div>
+
+          {/* Sort dropdown */}
+          <div style={{ position:'relative', flexShrink:0 }}>
+            <button onClick={() => setShowSort(!showSort)} style={{
+              display:'flex', alignItems:'center', gap:5,
+              padding:'7px 12px', borderRadius:'var(--r-full)',
+              background:'var(--bg-muted)', border:'1.5px solid var(--border)',
+              fontFamily:'var(--font-sans)', fontSize:'0.78rem', fontWeight:600,
+              color:'var(--text-secondary)', cursor:'pointer', whiteSpace:'nowrap',
+              minHeight: 36,
+            }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
+              {SORT_OPTIONS.find(o => o.value === sort)?.label}
+            </button>
+            {showSort && (
+              <div style={{
+                position:'absolute', top:'calc(100% + 4px)', right:0,
+                background:'var(--bg-card)', border:'1px solid var(--border)',
+                borderRadius:'var(--r-lg)', boxShadow:'var(--shadow-lg)',
+                overflow:'hidden', zIndex:50, minWidth:150,
+              }}>
+                {SORT_OPTIONS.map(o => (
+                  <button key={o.value} onClick={() => { setSort(o.value); setShowSort(false) }} style={{
+                    display:'block', width:'100%', textAlign:'left',
+                    padding:'9px 14px', background: sort===o.value ? 'var(--purple-50)' : 'none',
+                    border:'none', fontFamily:'var(--font-sans)', fontSize:'0.82rem',
+                    fontWeight: sort===o.value ? 600 : 500,
+                    color: sort===o.value ? 'var(--purple-700)' : 'var(--text-secondary)',
+                    cursor:'pointer', transition:'background 0.15s',
+                  }}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: Category pills */}
+        <div style={{ display:'flex', gap:'6px', overflowX:'auto', paddingBottom:2 }} className="hide-scroll">
+          {CATEGORIES.map(cat => (
+            <button key={cat} onClick={() => setCategory(cat)} style={{
+              flexShrink:0, padding:'5px 14px',
+              borderRadius:'var(--r-full)',
+              border: category===cat ? '1.5px solid var(--purple-600)' : '1.5px solid var(--border)',
+              background: category===cat ? 'var(--purple-600)' : 'var(--bg-card)',
+              fontFamily:'var(--font-sans)', fontSize:'0.78rem',
+              fontWeight: category===cat ? 700 : 500,
+              color: category===cat ? '#fff' : 'var(--text-muted)',
+              cursor:'pointer', transition:'all 0.15s', whiteSpace:'nowrap',
+              minHeight: 34,
+            }}>
+              {cat}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* ══════════════════════════════════════
-          CAMPAIGN GRID — light bg (matching screenshot 2)
-      ══════════════════════════════════════ */}
-      <div style={{ background: '#f9fafb', minHeight: 400 }}>
-        <div id="fc-grid" className="fc-grid-section">
+      {/* ══ CAMPAIGN GRID ══ */}
+      <div id="fc-grid" style={{ marginTop:'1.5rem' }}>
 
-          {/* Results count */}
-          {!loading && !error && (
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              marginBottom: '1.25rem', flexWrap: 'wrap', gap: 8,
-            }}>
-              <p style={{ fontFamily: "'DM Sans',system-ui,sans-serif", fontSize: '.875rem', color: '#6b7280', margin: 0 }}>
-                {filtered.length === 0
-                  ? 'No campaigns found'
-                  : <><strong style={{ color: '#111', fontWeight: 700 }}>{filtered.length}</strong>{' '}campaign{filtered.length !== 1 ? 's' : ''} found</>
-                }
-                {category !== 'All' && (
-                  <> in <span style={{ color: '#7c3aed', fontWeight: 600 }}>{category}</span></>
-                )}
-              </p>
-              {hasFilters && (
-                <button onClick={clearFilters} style={{
-                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                  fontFamily: "'DM Sans',system-ui,sans-serif", fontSize: '.82rem',
-                  fontWeight: 600, color: '#7c3aed',
-                }}>
-                  Clear filters ×
-                </button>
-              )}
-            </div>
-          )}
+        {/* Results bar */}
+        {!loading && !error && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1rem', flexWrap:'wrap', gap:8 }}>
+            <p style={{ fontSize:'0.875rem', color:'var(--text-muted)', margin:0 }}>
+              {filtered.length === 0
+                ? 'No campaigns found'
+                : <><strong style={{ color:'var(--text-primary)' }}>{filtered.length}</strong> campaign{filtered.length!==1?'s':''} found{category!=='All' ? <> in <span style={{ color:'var(--purple-600)', fontWeight:600 }}>{category}</span></> : ''}</>
+              }
+            </p>
+            {hasFilters && (
+              <button onClick={clearFilters} style={{
+                background:'none', border:'none', cursor:'pointer',
+                fontFamily:'var(--font-sans)', fontSize:'0.8rem', fontWeight:600,
+                color:'var(--purple-600)', padding:0,
+              }}>
+                Clear filters ×
+              </button>
+            )}
+          </div>
+        )}
 
-          {/* Loading skeletons */}
-          {loading && (
-            <div className="fc-grid">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} style={{
-                  background: '#fff', borderRadius: 16, overflow: 'hidden',
-                  border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,.05)',
-                }}>
-                  <div className="fc-skel" style={{ height: 200 }} />
-                  <div style={{ padding: '1.1rem', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div className="fc-skel" style={{ height: 20, width: '75%' }} />
-                    <div className="fc-skel" style={{ height: 14, width: '90%' }} />
-                    <div className="fc-skel" style={{ height: 14, width: '70%' }} />
-                    <div className="fc-skel" style={{ height: 6, marginTop: 6 }} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <div className="fc-skel" style={{ height: 13, width: '40%' }} />
-                      <div className="fc-skel" style={{ height: 13, width: '20%' }} />
-                    </div>
+        {/* Loading skeletons */}
+        {loading && (
+          <div className="campaign-grid">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} style={{ background:'var(--bg-card)', borderRadius:'var(--r-xl)', overflow:'hidden', border:'1px solid var(--border)' }}>
+                <div className="skeleton" style={{ height:200 }}/>
+                <div style={{ padding:'1rem', display:'flex', flexDirection:'column', gap:10 }}>
+                  <div className="skeleton" style={{ height:20, width:'75%' }}/>
+                  <div className="skeleton" style={{ height:14, width:'90%' }}/>
+                  <div className="skeleton" style={{ height:8, marginTop:6 }}/>
+                  <div style={{ display:'flex', justifyContent:'space-between' }}>
+                    <div className="skeleton" style={{ height:13, width:'40%' }}/>
+                    <div className="skeleton" style={{ height:13, width:'25%' }}/>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div style={{ textAlign: 'center', padding: '4rem 1.5rem' }}>
-              <div style={{
-                width: 56, height: 56, borderRadius: 16, margin: '0 auto 1rem',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: '#fef2f2', border: '1px solid #fecdd3',
-              }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="1.5">
-                  <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
-                </svg>
               </div>
-              <p style={{ fontFamily: "'DM Sans',system-ui", fontWeight: 700, color: '#111', marginBottom: '.4rem' }}>
-                Something went wrong
-              </p>
-              <p style={{ color: '#e11d48', fontSize: '.875rem', marginBottom: '1.25rem' }}>{error}</p>
-              <button onClick={refetch} style={{
-                padding: '10px 24px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: '#fff',
-                fontFamily: "'DM Sans',system-ui", fontWeight: 700,
-              }}>
-                Try again
+            ))}
+          </div>
+        )}
+
+        {/* Error */}
+        {error && !loading && (
+          <div style={{ textAlign:'center', padding:'4rem 1.5rem' }}>
+            <div style={{ fontSize:'3rem', marginBottom:'1rem' }}>⚠️</div>
+            <h3 style={{ fontFamily:'var(--font-serif)', fontSize:'1.25rem', color:'var(--text-primary)', marginBottom:'.5rem' }}>Something went wrong</h3>
+            <p style={{ fontSize:'0.875rem', color:'var(--error-500)', marginBottom:'1.25rem' }}>{error}</p>
+            <button onClick={refetch} className="btn btn-primary">Try again</button>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!loading && !error && filtered.length === 0 && (
+          <div style={{
+            textAlign:'center', padding:'clamp(3rem, 8vw, 5rem) 1.5rem',
+            background:'var(--bg-card)', border:'1px solid var(--border)',
+            borderRadius:'var(--r-2xl)',
+          }}>
+            <div style={{ fontSize:'2.5rem', marginBottom:'1rem' }}>🌱</div>
+            <h3 style={{ fontFamily:'var(--font-serif)', fontSize:'1.3rem', color:'var(--text-primary)', marginBottom:'.5rem' }}>
+              No campaigns found
+            </h3>
+            <p style={{ fontSize:'0.875rem', color:'var(--text-muted)', marginBottom:'1.5rem', maxWidth:400, margin:'0 auto 1.5rem' }}>
+              {search ? `Nothing matches "${search}"` : 'Try adjusting your filters.'}
+            </p>
+            <div style={{ display:'flex', gap:'0.75rem', justifyContent:'center', flexWrap:'wrap' }}>
+              {hasFilters && (
+                <button onClick={clearFilters} className="btn btn-secondary">Clear filters</button>
+              )}
+              <button onClick={() => navigate('/campaign/create')} className="btn btn-primary">
+                Create a campaign
               </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Empty state */}
-          {!loading && !error && filtered.length === 0 && (
-            <div style={{
-              textAlign: 'center', padding: '4rem 1.5rem',
-              background: '#fff', border: '1px solid #e5e7eb',
-              borderRadius: 20,
-            }}>
-              <div style={{ fontSize: '2.8rem', marginBottom: '1rem' }}>🌱</div>
-              <h3 style={{
-                fontFamily: "'DM Serif Display',Georgia,serif",
-                fontSize: '1.35rem', color: '#111', marginBottom: '.5rem',
-              }}>
-                No campaigns found
+        {/* Campaign cards grid */}
+        {!loading && !error && filtered.length > 0 && (
+          <div className="campaign-grid">
+            {filtered.map((campaign, i) => (
+              <div key={campaign.contractAddress} className="animate-fade-up" style={{ animationDelay: `${Math.min(i, 8) * 55}ms` }}>
+                <CampaignCard campaign={campaign}/>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Bottom CTA for unauthenticated */}
+        {!account && !loading && filtered.length > 0 && (
+          <div style={{
+            marginTop:'3rem', borderRadius:'var(--r-2xl)',
+            background:'linear-gradient(135deg, #4c1d95 0%, #6d28d9 50%, #7c3aed 100%)',
+            padding:'clamp(1.75rem, 5vw, 2.5rem) clamp(1.25rem, 4vw, 2rem)',
+            display:'flex', flexWrap:'wrap', alignItems:'center',
+            justifyContent:'space-between', gap:'1.5rem',
+          }}>
+            <div>
+              <h3 style={{ fontFamily:'var(--font-serif)', fontSize:'clamp(1.35rem, 3vw, 1.7rem)', color:'#fff', margin:'0 0 .35rem' }}>
+                Ready to make an impact?
               </h3>
-              <p style={{
-                fontFamily: "'DM Sans',system-ui", color: '#9ca3af',
-                fontSize: '.9rem', marginBottom: '1.5rem',
-              }}>
-                {search
-                  ? `Nothing matches "${search}"`
-                  : verified.length === 0
-                    ? 'No verified campaigns yet. Be the first to launch one!'
-                    : 'Try adjusting your search or filters.'}
+              <p style={{ fontSize:'0.9rem', color:'rgba(255,255,255,0.55)', maxWidth:400, margin:0, lineHeight:1.65 }}>
+                Connect your wallet to donate with ETH, or create an account to launch a verified campaign.
               </p>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                {hasFilters && (
-                  <button onClick={clearFilters} style={{
-                    padding: '10px 22px', borderRadius: 999,
-                    border: '1.5px solid #d1d5db', background: '#fff',
-                    fontFamily: "'DM Sans',system-ui", fontWeight: 600,
-                    fontSize: '.875rem', color: '#374151', cursor: 'pointer',
-                  }}>
-                    Clear filters
-                  </button>
-                )}
-                <button onClick={() => navigate('/campaign/create')} style={{
-                  padding: '10px 22px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                  background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: '#fff',
-                  fontFamily: "'DM Sans',system-ui", fontWeight: 700, fontSize: '.875rem',
-                }}>
-                  Create a campaign
-                </button>
-              </div>
             </div>
-          )}
-
-          {/* Campaign grid */}
-          {!loading && !error && filtered.length > 0 && (
-            <div className="fc-grid">
-              {filtered.map((campaign, i) => (
-                <div
-                  key={campaign.contractAddress}
-                  className="fc-fade-up"
-                  style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
-                >
-                  <CampaignCard campaign={campaign} />
-                </div>
-              ))}
+            <div style={{ display:'flex', gap:'0.75rem', flexWrap:'wrap' }}>
+              <button onClick={connectWallet} style={{
+                padding:'11px 22px', borderRadius:'var(--r-full)', border:'none',
+                background:'#fff', color:'var(--purple-700)',
+                fontFamily:'var(--font-sans)', fontWeight:700, fontSize:'0.875rem',
+                cursor:'pointer',
+              }}>
+                Connect wallet
+              </button>
+              <button onClick={() => navigate('/login')} style={{
+                padding:'11px 22px', borderRadius:'var(--r-full)',
+                background:'rgba(255,255,255,0.1)', border:'1.5px solid rgba(255,255,255,0.3)',
+                color:'#fff', fontFamily:'var(--font-sans)', fontWeight:600, fontSize:'0.875rem',
+                cursor:'pointer',
+              }}>
+                Create account
+              </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Bottom CTA for unauthenticated */}
-          {!account && !loading && filtered.length > 0 && (
-            <div className="fc-cta-box">
-              <div>
-                <h3 style={{
-                  fontFamily: "'DM Serif Display',Georgia,serif",
-                  fontSize: '1.7rem', color: '#fff', margin: '0 0 .4rem',
-                }}>
-                  Ready to make an impact?
-                </h3>
-                <p style={{
-                  fontFamily: "'DM Sans',system-ui", color: 'rgba(255,255,255,.55)',
-                  fontSize: '.92rem', maxWidth: 400, margin: 0, lineHeight: 1.65,
-                }}>
-                  Connect your wallet to donate with ETH, or create an account to launch a verified campaign.
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button onClick={connectWallet} className="fc-cta-btn fc-cta-btn-white">
-                  Connect wallet
-                </button>
-                <button onClick={() => navigate('/login')} className="fc-cta-btn fc-cta-btn-outline">
-                  Create account
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div style={{ height: 60 }} />
-        </div>
+        <div style={{ height:'3rem' }}/>
       </div>
+
+      {/* Close sort dropdown on outside click */}
+      {showSort && (
+        <div style={{ position:'fixed', inset:0, zIndex:49 }} onClick={() => setShowSort(false)}/>
+      )}
     </>
   )
 }
