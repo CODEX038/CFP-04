@@ -367,7 +367,7 @@ const LandingPage = () => {
               </div>
               <span style={{ fontFamily:"'DM Serif Display',serif", fontSize:'1.15rem', color:'#fff' }}>FundChain</span>
             </div>
-            <div style={{ display:'flex', gap:clamp ? '1.5rem' : '1.5rem', flexWrap:'wrap' }}>
+            <div style={{ display:'flex', gap:'1.5rem', flexWrap:'wrap' }}>
               {[['Browse','/app'],['Sign in','/login'],['Register','/login'],['Admin','/admin-login']].map(([label,path]) => (
                 <button key={label} onClick={() => navigate(path)} style={{
                   background:'none', border:'none', cursor:'pointer', padding:0,
