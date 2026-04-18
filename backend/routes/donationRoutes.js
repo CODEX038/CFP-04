@@ -297,7 +297,7 @@ router.post('/upi/webhook', async (req, res) => {
 
         /* Increment campaign raised amount in MongoDB */
         await Campaign.findByIdAndUpdate(donation.campaign, {
-          \: { amountRaised: donation.amount, funders: 1 },
+          $inc: { amountRaised: donation.amount, funders: 1 },
         })
 
         console.log('[Webhook] Donation marked paid:', donation._id, '₹' + donation.amount)
@@ -347,7 +347,7 @@ router.post('/verify-payment', protect, async (req, res) => {
 
         /* Increment campaign raised amount */
         await Campaign.findByIdAndUpdate(donation.campaign, {
-          \: { amountRaised: donation.amount, funders: 1 },
+          $inc: { amountRaised: donation.amount, funders: 1 },
         })
 
         console.log('[VerifyPayment] Donation confirmed paid:', donation._id)
