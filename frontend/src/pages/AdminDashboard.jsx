@@ -215,7 +215,7 @@ const AdminDashboard = () => {
     if (!match) return false
     if (campFilter === 'active')   return !c.paused && Date.now() < c.deadline * 1000
     if (campFilter === 'paused')   return c.paused
-    if (campFilter === 'funded')   return parseFloat(c.amountRaised) >= parseFloat(c.goal)
+    if (campFilter === 'funded')   return parseFloat(c.amountRaised || c.raised || 0) >= parseFloat(c.goal || 1)
     if (campFilter === 'expired')  return Date.now() > c.deadline * 1000
     if (campFilter === 'pending')  return c.verificationStatus === 'pending'
     if (campFilter === 'verified') return c.verificationStatus === 'verified'
@@ -591,7 +591,7 @@ const AdminDashboard = () => {
                         </thead>
                         <tbody>
                           {filteredCampaigns.map(c => {
-                            const pct = Math.min((parseFloat(c.amountRaised||0)/parseFloat(c.goal||1))*100, 100)
+                            const pct = Math.min((parseFloat(c.amountRaised||c.raised||0)/parseFloat(c.goal||1))*100, 100)
                             return (
                               <tr key={c._id}>
                                 <td style={{ minWidth:180 }}>
@@ -609,7 +609,10 @@ const AdminDashboard = () => {
                                 </td>
                                 <td style={{ minWidth:160 }}>
                                   <ProgressBar percent={pct}/>
-                                  <p style={{ fontSize:'0.72rem', color:'#9ca3af', margin:'4px 0 0' }}>{c.amountRaised||0} / {c.goal} ETH</p>
+                                  {c.paymentType === 'fiat'
+                                    ? <p style={{ fontSize:'0.72rem', color:'#9ca3af', margin:'4px 0 0' }}>₹{Number(c.amountRaised||c.raised||0).toLocaleString('en-IN')} / ₹{Number(c.goal).toLocaleString('en-IN')}</p>
+                                    : <p style={{ fontSize:'0.72rem', color:'#9ca3af', margin:'4px 0 0' }}>{c.amountRaised||0} / {c.goal} ETH</p>
+                                  }
                                 </td>
                                 <td>
                                   <span style={{ fontSize:'0.72rem', background:'#f5f3ff', color:'#7c3aed', padding:'2px 9px', borderRadius:999, textTransform:'capitalize' }}>
