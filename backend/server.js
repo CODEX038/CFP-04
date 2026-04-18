@@ -15,10 +15,11 @@ import verificationRoutes         from './routes/verificationRoutes.js'
 import campaignVerificationRoutes from './routes/campaignVerificationRoutes.js'
 import donationRoutes             from './routes/donationRoutes.js'
 import campaignExpiryRoutes       from './routes/campaignExpiryRoutes.js'
+import campaignSyncRoute          from './routes/campaignSyncRoute.js'   // ← NEW
 
 // ── Listeners / Jobs ──────────────────────────────────────────────────────────
-import { startListener }      from './listeners/contractListener.js'
-import { scheduleExpiryCheck } from './jobs/campaignExpiryCron.js'
+import { startListener }       from './listeners/contractListener.js'
+import { scheduleExpiryCheck, runExpiryCheckNow } from './jobs/campaignExpiryCron.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = path.dirname(__filename)
@@ -56,8 +57,7 @@ app.use(cors({
 
 app.options('*', cors())
 
-// ── Stripe webhook — raw body BEFORE express.json() ──────────────────────────
-// This MUST come before express.json() middleware.
+// ── Stripe webhook — raw body MUST come BEFORE express.json() ────────────────
 app.use(
   '/api/donations/upi/webhook',
   express.raw({ type: 'application/json' })
@@ -82,17 +82,17 @@ app.use(
 )
 
 // ── Routes ────────────────────────────────────────────────────────────────────
+// IMPORTANT: campaignSyncRoute MUST be registered before campaignRoutes
+// because both share the /api/campaigns base path and Express matches in order.
 app.use('/api/auth',                  authRoutes)
+app.use('/api/campaigns',             campaignSyncRoute)          // ← NEW (sync-raised, stats)
 app.use('/api/campaigns',             campaignRoutes)
-app.use('/api/campaigns',             campaignExpiryRoutes)   // check-expired + process-expired
+app.use('/api/campaigns',             campaignExpiryRoutes)       // check-expired + process-expired
 app.use('/api/verification',          verificationRoutes)
 app.use('/api/campaign-verification', campaignVerificationRoutes)
-app.use('/api/donations',             donationRoutes)
+app.use('/api/donations',             donationRoutes)             // create-checkout, refund, etc.
 
-// ── Admin: manual cron trigger (development / testing) ───────────────────────
-// Remove or guard this in production behind adminOnly middleware
-import { runExpiryCheckNow } from './jobs/campaignExpiryCron.js'
-
+// ── Admin: manual cron trigger ────────────────────────────────────────────────
 app.post('/api/admin/trigger-expiry-check', async (req, res) => {
   const authHeader = req.headers.authorization || ''
   const token      = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null

@@ -118,6 +118,8 @@ const AdminDashboard = () => {
   const [actionLoading, setActionLoading] = useState(false)
   const [actionMsg, setActionMsg]         = useState('')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [lastSynced, setLastSynced] = useState(null)
 
   const headers = { Authorization: `Bearer ${token}` }
 
@@ -128,13 +130,26 @@ const AdminDashboard = () => {
         axios.get(`${API}/campaigns`),
         axios.get(`${API}/auth/users`, { headers }),
       ])
-      setCampaigns(campRes.data)
-      setUsers(userRes.data)
+      setCampaigns(Array.isArray(campRes.data) ? campRes.data : campRes.data.data || [])
+      setUsers(Array.isArray(userRes.data) ? userRes.data : userRes.data.data || [])
     } catch(err) { console.error(err) }
     finally { setLoading(false) }
   }
 
-  useEffect(() => { fetchAll() }, [])
+  const syncEthRaised = async () => {
+    setSyncing(true)
+    try {
+      await axios.post(`${API}/campaigns/sync-raised`, {}, { headers })
+      await fetchAll()
+      setLastSynced(new Date())
+    } catch (err) {
+      await fetchAll()
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  useEffect(() => { syncEthRaised() }, [])
 
   const showMsg = (msg) => { setActionMsg(msg); setTimeout(() => setActionMsg(''), 3000) }
 
@@ -183,12 +198,13 @@ const AdminDashboard = () => {
     finally { setActionLoading(false) }
   }
 
-  /* Derived stats */
+  /* Derived stats — deadline may be stored as unix seconds OR ms */
+  const toMs = (d) => d > 1e10 ? d : d * 1000
   const ethCampaigns    = campaigns.filter(c => c.paymentType !== 'fiat')
   const fiatCampaigns   = campaigns.filter(c => c.paymentType === 'fiat')
   const totalEthRaised  = ethCampaigns.reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0)
   const totalInrRaised  = fiatCampaigns.reduce((s, c) => s + parseFloat(c.amountRaised || c.raised || 0), 0)
-  const activeCamps     = campaigns.filter(c => !c.paused && Date.now() < c.deadline * 1000).length
+  const activeCamps     = campaigns.filter(c => !c.paused && Date.now() < toMs(c.deadline)).length
   const pendingCampDocs = campaigns.filter(c => c.verificationStatus === 'pending' && c.documents?.length > 0).length
   const pendingUserDocs = users.filter(u => u.document?.url && (!u.document?.status || u.document?.status === 'pending')).length
 
@@ -449,10 +465,28 @@ const AdminDashboard = () => {
         <div className="adm-body">
 
           {/* ── Stat cards ── */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'.75rem', flexWrap:'wrap', gap:8 }}>
+            <p style={{ fontFamily:"'Poppins',sans-serif", fontSize:'.75rem', color:'#9ca3af', margin:0 }}>
+              {lastSynced ? `Last synced: ${lastSynced.toLocaleTimeString()}` : 'Syncing chain data…'}
+            </p>
+            <button onClick={syncEthRaised} disabled={syncing} style={{
+              display:'flex', alignItems:'center', gap:6, padding:'6px 14px',
+              borderRadius:999, border:'1.5px solid #e5e7eb', background:'#fff',
+              fontFamily:"'Poppins',sans-serif", fontSize:'.75rem', fontWeight:600,
+              color:'#374151', cursor:'pointer', transition:'all .15s',
+              opacity:syncing?.6:1,
+            }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: syncing ? 'adm-spin .7s linear infinite' : 'none' }}>
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+              </svg>
+              {syncing ? 'Syncing…' : 'Sync Chain Data'}
+            </button>
+          </div>
           <div className="adm-stats">
             <StatCard label="Total Campaigns" value={campaigns.length}              icon="📋" color="#ede9fe"/>
             <StatCard label="Active"           value={activeCamps}                  icon="📈" color="#dcfce7"/>
-            <StatCard label="ETH Raised"       value={`${totalEthRaised.toFixed(3)} ETH`} icon="⟠" color="#dbeafe"/>
+            <StatCard label="ETH Raised"       value={`${totalEthRaised.toFixed(4)} ETH`} icon="⟠" color="#dbeafe"/>
             <StatCard label="UPI / Card Raised" value={`₹${totalInrRaised.toLocaleString('en-IN')}`} icon="💳" color="#fef9c3"/>
             <StatCard label="Total Users"      value={users.length}                 icon="👥" color="#fef3c7"/>
             <StatCard label="Pending Docs"     value={pendingCampDocs + pendingUserDocs} icon="📄" color="#fee2e2"/>
