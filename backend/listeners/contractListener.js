@@ -107,6 +107,8 @@ export const startListener = async () => {
           const contract = new ethers.Contract(c.contractAddress, CAMPAIGN_ABI, provider)
 
           try {
+            const isFirstPoll = !lastBlock[key]
+
             const [fundedEvents, withdrawnEvents, refundedEvents] = await Promise.all([
               contract.queryFilter('Funded',    from, latest),
               contract.queryFilter('Withdrawn', from, latest),
@@ -114,17 +116,40 @@ export const startListener = async () => {
               contract.queryFilter('Refunded',  from, latest).catch(() => []),
             ])
 
-            /* ── Funded: increment amountRaised AND funders ── */
+            /* ── On first startup: do a full historical scan to set correct funders count ── */
+            if (isFirstPoll) {
+              try {
+                const allFunded = await contract.queryFilter('Funded', 0, latest)
+                const uniqueFunders = new Set(allFunded.map(e => e.args.funder.toLowerCase()))
+                const totalRaised   = allFunded.reduce((s, e) => s + parseFloat(ethers.formatEther(e.args.amount)), 0)
+
+                if (allFunded.length > 0) {
+                  await Campaign.findByIdAndUpdate(c._id, {
+                    $set: {
+                      funders:      uniqueFunders.size,
+                      amountRaised: totalRaised,
+                      raised:       totalRaised,
+                    },
+                  })
+                  console.log(`[Listener] Historical sync: "${c.title}" — ${uniqueFunders.size} funders, ${totalRaised} ETH`)
+                }
+              } catch (histErr) {
+                console.warn(`[Listener] Historical scan failed for "${c.title}":`, histErr.shortMessage || histErr.message)
+              }
+            }
+
+            /* ── Funded: increment amountRaised AND funders (new events only) ── */
             for (const event of fundedEvents) {
+              if (isFirstPoll) break  // skip — already handled by full scan above
               const eth    = parseFloat(ethers.formatEther(event.args.amount))
               const funder = event.args.funder
               console.log(`Funded: "${c.title}" +${eth} ETH from ${funder}`)
 
               await Campaign.findByIdAndUpdate(c._id, {
                 $inc: {
-                  amountRaised: eth,   // ✅ correct field name (was 'raised')
-                  raised:       eth,   // also update legacy field
-                  funders:      1,     // ✅ increment donor count
+                  amountRaised: eth,
+                  raised:       eth,
+                  funders:      1,
                 },
               })
             }
