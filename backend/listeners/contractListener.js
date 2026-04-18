@@ -28,7 +28,7 @@ const CAMPAIGN_ABI = [
 ]
 
 const POLL_INTERVAL_MS  = 30 * 1000   // poll every 30 seconds
-const BLOCK_LOOK_BEHIND = 50          // only look back 50 blocks per poll (safe for Alchemy free tier)
+const BLOCK_LOOK_BEHIND = 10000       // publicnode allows up to 50k blocks per query
 
 const isRealAddress = (addr) =>
   addr &&
@@ -45,7 +45,30 @@ export const startListener = async () => {
       return
     }
 
-    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL)
+    /* Use publicnode for all polling — Alchemy free tier limits eth_getLogs to 10 blocks */
+    const POLL_RPCS = [
+      'https://ethereum-sepolia-rpc.publicnode.com',
+      'https://sepolia.drpc.org',
+      'https://1rpc.io/sepolia',
+      process.env.RPC_URL,
+    ].filter(Boolean)
+
+    let provider = null
+    for (const rpc of POLL_RPCS) {
+      try {
+        const p = new ethers.JsonRpcProvider(rpc)
+        await p.getBlockNumber()
+        provider = p
+        console.log('[Listener] Using RPC:', rpc)
+        break
+      } catch {
+        console.warn('[Listener] RPC unavailable, trying next:', rpc)
+      }
+    }
+    if (!provider) {
+      provider = new ethers.JsonRpcProvider(process.env.RPC_URL)
+    }
+
     const factory  = new ethers.Contract(process.env.CONTRACT_ADDRESS, FACTORY_ABI, provider)
 
     console.log('Contract listener started on Sepolia (polling mode)...')
