@@ -26,6 +26,13 @@ const CAMPAIGN_ABI = [
   { type:'function', name:'amountRaised', inputs:[], outputs:[{ type:'uint256' }], stateMutability:'view' },
   { type:'function', name:'claimed',      inputs:[], outputs:[{ type:'bool'    }], stateMutability:'view' },
   { type:'function', name:'paused',       inputs:[], outputs:[{ type:'bool'    }], stateMutability:'view' },
+  {
+    type:'event', name:'Funded',
+    inputs:[
+      { type:'address', name:'funder', indexed:true },
+      { type:'uint256', name:'amount', indexed:false },
+    ],
+  },
 ]
 
 function getProvider() {
@@ -88,13 +95,23 @@ router.post('/sync-raised', protect, adminOnly, async (req, res) => {
 
           const raisedEth = parseFloat(ethers.formatEther(raised))
 
-          await Campaign.findByIdAndUpdate(c._id, {
-            amountRaised: raisedEth,
-            claimed,
-            paused,
-          })
+          /* Count unique funders from Funded events */
+          let funders = 0
+          try {
+            const filter = contract.filters.Funded()
+            const events = await contract.queryFilter(filter, 0, 'latest')
+            const unique = new Set(events.map(e => e.args.funder.toLowerCase()))
+            funders = unique.size
+          } catch (evErr) {
+            console.warn('[SyncRoute] Could not read Funded events for', c.contractAddress)
+          }
 
-          results.push({ id: c._id, title: c.title, amountRaised: raisedEth })
+          const update = { amountRaised: raisedEth, claimed, paused }
+          if (funders > 0) update.funders = funders
+
+          await Campaign.findByIdAndUpdate(c._id, update)
+
+          results.push({ id: c._id, title: c.title, amountRaised: raisedEth, funders })
           synced++
         } catch (err) {
           console.warn(`[SyncRoute] Failed for ${c.contractAddress}:`, err.message)

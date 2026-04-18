@@ -23,6 +23,8 @@ const CAMPAIGN_ABI = [
   "event Funded(address indexed funder, uint256 amount)",
   "event Withdrawn(address indexed owner, uint256 amount)",
   "event Refunded(address indexed funder, uint256 amount)",
+  /* Legacy event names — keep for compatibility */
+  "event RefundIssued(address indexed donor, uint256 amount)",
 ]
 
 const POLL_INTERVAL_MS  = 30 * 1000   // poll every 30 seconds
@@ -105,27 +107,65 @@ export const startListener = async () => {
           const contract = new ethers.Contract(c.contractAddress, CAMPAIGN_ABI, provider)
 
           try {
-            const [funded, withdrawn, refunded] = await Promise.all([
+            const [fundedEvents, withdrawnEvents, refundedEvents] = await Promise.all([
               contract.queryFilter('Funded',    from, latest),
               contract.queryFilter('Withdrawn', from, latest),
-              contract.queryFilter('Refunded',  from, latest),
+              /* Try both event names for refunds */
+              contract.queryFilter('Refunded',  from, latest).catch(() => []),
             ])
 
-            for (const event of funded) {
-              const eth = parseFloat(ethers.formatEther(event.args.amount))
-              console.log(`Funded: "${c.title}" +${eth} ETH from ${event.args.funder}`)
-              await Campaign.findByIdAndUpdate(c._id, { $inc: { raised: eth } })
+            /* ── Funded: increment amountRaised AND funders ── */
+            for (const event of fundedEvents) {
+              const eth    = parseFloat(ethers.formatEther(event.args.amount))
+              const funder = event.args.funder
+              console.log(`Funded: "${c.title}" +${eth} ETH from ${funder}`)
+
+              await Campaign.findByIdAndUpdate(c._id, {
+                $inc: {
+                  amountRaised: eth,   // ✅ correct field name (was 'raised')
+                  raised:       eth,   // also update legacy field
+                  funders:      1,     // ✅ increment donor count
+                },
+              })
             }
 
-            for (const event of withdrawn) {
+            /* ── Withdrawn: mark as claimed ── */
+            for (const event of withdrawnEvents) {
               console.log(`Withdrawn: "${c.title}" ${ethers.formatEther(event.args.amount)} ETH`)
-              await Campaign.findByIdAndUpdate(c._id, { $set: { claimed: true } })
+              await Campaign.findByIdAndUpdate(c._id, {
+                $set: { claimed: true },
+              })
             }
 
-            for (const event of refunded) {
+            /* ── Refunded: decrement amountRaised ── */
+            for (const event of refundedEvents) {
               const eth = parseFloat(ethers.formatEther(event.args.amount))
               console.log(`Refunded: "${c.title}" -${eth} ETH to ${event.args.funder}`)
-              await Campaign.findByIdAndUpdate(c._id, { $inc: { raised: -eth } })
+              await Campaign.findByIdAndUpdate(c._id, {
+                $inc: {
+                  amountRaised: -eth,
+                  raised:       -eth,
+                  funders:      -1,
+                },
+              })
+            }
+
+            /* ── Also try legacy RefundIssued event name ── */
+            try {
+              const refundIssuedEvents = await contract.queryFilter('RefundIssued', from, latest)
+              for (const event of refundIssuedEvents) {
+                const eth = parseFloat(ethers.formatEther(event.args.amount))
+                console.log(`RefundIssued: "${c.title}" -${eth} ETH`)
+                await Campaign.findByIdAndUpdate(c._id, {
+                  $inc: {
+                    amountRaised: -eth,
+                    raised:       -eth,
+                    funders:      -1,
+                  },
+                })
+              }
+            } catch {
+              /* RefundIssued event not in this contract — skip */
             }
 
             lastBlock[key] = latest

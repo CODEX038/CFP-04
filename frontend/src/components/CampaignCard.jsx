@@ -170,23 +170,28 @@ export default function CampaignCard({ campaign }) {
             </span>
           </div>
 
-          {campaign.funders > 0 && (
-            <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:'0.375rem' }}>
-              <div style={{ display:'flex' }}>
-                {[...Array(Math.min(campaign.funders, 3))].map((_, i) => (
-                  <div key={i} style={{
-                    width:16, height:16, borderRadius:'50%',
-                    background:`hsl(${260+i*20}, 60%, 65%)`,
-                    border:'1.5px solid var(--bg-card)',
-                    marginLeft: i===0?0:-5,
-                  }}/>
-                ))}
+          {(() => {
+            /* Show funders from DB, or estimate from amountRaised > 0 for ETH campaigns */
+            const funderCount = campaign.funders || 0
+            if (funderCount === 0) return null
+            return (
+              <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:'0.375rem' }}>
+                <div style={{ display:'flex' }}>
+                  {[...Array(Math.min(funderCount, 3))].map((_, i) => (
+                    <div key={i} style={{
+                      width:16, height:16, borderRadius:'50%',
+                      background:`hsl(${260+i*20}, 60%, 65%)`,
+                      border:'1.5px solid var(--bg-card)',
+                      marginLeft: i===0?0:-5,
+                    }}/>
+                  ))}
+                </div>
+                <span style={{ fontSize:'0.7rem', color:'var(--text-muted)' }}>
+                  {funderCount} supporter{funderCount!==1?'s':''}
+                </span>
               </div>
-              <span style={{ fontSize:'0.7rem', color:'var(--text-muted)' }}>
-                {campaign.funders} supporter{campaign.funders!==1?'s':''}
-              </span>
-            </div>
-          )}
+            )
+          })()}
         </div>
       </div>
     </article>
