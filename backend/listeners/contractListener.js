@@ -116,10 +116,14 @@ export const startListener = async () => {
               contract.queryFilter('Refunded',  from, latest).catch(() => []),
             ])
 
-            /* ── On first startup: do a full historical scan to set correct funders count ── */
+            /* ── On first startup: do a full historical scan using non-Alchemy RPC ── */
             if (isFirstPoll) {
               try {
-                const allFunded = await contract.queryFilter('Funded', 0, latest)
+                /* Use publicnode for historical queries — Alchemy free tier limits to 10 blocks */
+                const logsRpc = 'https://ethereum-sepolia-rpc.publicnode.com'
+                const logsProvider = new ethers.JsonRpcProvider(logsRpc)
+                const logsContract = new ethers.Contract(c.contractAddress, CAMPAIGN_ABI, logsProvider)
+                const allFunded = await logsContract.queryFilter('Funded', 0, latest)
                 const uniqueFunders = new Set(allFunded.map(e => e.args.funder.toLowerCase()))
                 const totalRaised   = allFunded.reduce((s, e) => s + parseFloat(ethers.formatEther(e.args.amount)), 0)
 

@@ -44,8 +44,8 @@ function getProvider() {
 
 async function getWorkingProvider() {
   const rpcs = [
-    process.env.RPC_URL,             // Alchemy — already used by contractListener
-    process.env.SEPOLIA_RPC_URL,     // fallback from env
+    process.env.RPC_URL,
+    process.env.SEPOLIA_RPC_URL,
     'https://ethereum-sepolia-rpc.publicnode.com',
     'https://sepolia.drpc.org',
     'https://1rpc.io/sepolia',
@@ -54,7 +54,7 @@ async function getWorkingProvider() {
   for (const rpc of rpcs) {
     try {
       const provider = new ethers.JsonRpcProvider(rpc)
-      await provider.getBlockNumber()   // quick connectivity check
+      await provider.getBlockNumber()
       console.log('[SyncRoute] Using RPC:', rpc)
       return provider
     } catch {
@@ -62,6 +62,32 @@ async function getWorkingProvider() {
     }
   }
   throw new Error('All Sepolia RPC endpoints failed')
+}
+
+/* Provider specifically for event log queries — avoids Alchemy free tier 10-block limit */
+async function getLogsProvider() {
+  const logRpcs = [
+    'https://ethereum-sepolia-rpc.publicnode.com',  // no block range limit
+    'https://sepolia.drpc.org',
+    'https://1rpc.io/sepolia',
+    process.env.SEPOLIA_RPC_URL,
+    process.env.RPC_URL,  // Alchemy last — has 10-block limit on free tier
+  ].filter(Boolean)
+
+  for (const rpc of logRpcs) {
+    if (rpc.includes('alchemy')) continue  // skip Alchemy for log queries
+    try {
+      const provider = new ethers.JsonRpcProvider(rpc)
+      await provider.getBlockNumber()
+      console.log('[SyncRoute] Using logs RPC:', rpc)
+      return provider
+    } catch {
+      console.warn('[SyncRoute] Logs RPC failed:', rpc)
+    }
+  }
+  /* Final fallback to Alchemy with chunked queries */
+  console.warn('[SyncRoute] Falling back to Alchemy for logs (may be limited)')
+  return new ethers.JsonRpcProvider(process.env.RPC_URL)
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -144,7 +170,7 @@ router.post('/sync-raised', protect, adminOnly, async (req, res) => {
 ══════════════════════════════════════════════════════════════════════ */
 router.post('/sync-funders', protect, adminOnly, async (req, res) => {
   try {
-    const provider = await getWorkingProvider()
+    const provider = await getLogsProvider()
 
     const CAMPAIGN_ABI_EVENTS = [
       {
@@ -165,31 +191,57 @@ router.post('/sync-funders', protect, adminOnly, async (req, res) => {
     let errors = 0
     const results = []
 
+    /* Get current block to use as upper bound */
+    const latestBlock = await provider.getBlockNumber()
+    /* Sepolia Funded event topic hash */
+    const fundedTopic = ethers.id('Funded(address,uint256)')
+
     await Promise.allSettled(campaigns.map(async (c) => {
       try {
         const contract = new ethers.Contract(c.contractAddress, CAMPAIGN_ABI_EVENTS, provider)
-        const allFunded = await contract.queryFilter('Funded', 0, 'latest')
+
+        /* Try queryFilter first — may fail on some RPCs with block 0 */
+        let allFunded = []
+        try {
+          allFunded = await contract.queryFilter('Funded', 0, latestBlock)
+        } catch (qfErr) {
+          console.warn(`[SyncFunders] queryFilter failed for ${c.contractAddress}, trying getLogs:`, qfErr.message)
+          /* Fallback: use provider.getLogs directly */
+          const logs = await provider.getLogs({
+            address:   c.contractAddress,
+            topics:    [fundedTopic],
+            fromBlock: 0,
+            toBlock:   latestBlock,
+          })
+          allFunded = logs.map(log => {
+            const parsed = contract.interface.parseLog(log)
+            return { args: parsed.args }
+          }).filter(Boolean)
+        }
 
         const uniqueFunders = new Set(allFunded.map(e => e.args.funder.toLowerCase()))
         const totalRaised   = allFunded.reduce(
           (s, e) => s + parseFloat(ethers.formatEther(e.args.amount)), 0
         )
 
-        await Campaign.findByIdAndUpdate(c._id, {
-          $set: {
-            funders:      uniqueFunders.size,
-            amountRaised: totalRaised,
-            raised:       totalRaised,
-          },
-        })
+        console.log(`[SyncFunders] "${c.title}" — found ${allFunded.length} Funded events, ${uniqueFunders.size} unique funders`)
+
+        /* Always update funders; only update amountRaised if events found */
+        const update = { funders: uniqueFunders.size }
+        if (allFunded.length > 0) {
+          update.amountRaised = totalRaised
+          update.raised       = totalRaised
+        }
+
+        await Campaign.findByIdAndUpdate(c._id, { $set: update })
 
         results.push({
-          title:    c.title,
-          funders:  uniqueFunders.size,
-          raised:   totalRaised,
+          title:   c.title,
+          funders: uniqueFunders.size,
+          raised:  totalRaised,
+          events:  allFunded.length,
         })
         synced++
-        console.log(`[SyncFunders] "${c.title}" → ${uniqueFunders.size} funders, ${totalRaised} ETH`)
       } catch (err) {
         console.warn(`[SyncFunders] Failed for ${c.contractAddress}:`, err.message)
         errors++
@@ -203,6 +255,30 @@ router.post('/sync-funders', protect, adminOnly, async (req, res) => {
     })
   } catch (err) {
     console.error('[SyncFunders] error:', err.message)
+    res.status(500).json({ message: err.message })
+  }
+})
+
+/* ══════════════════════════════════════════════════════════════════════
+   POST /api/campaigns/set-funders
+   Quick fix: manually set funders count for a specific campaign.
+   Body: { contractAddress, funders }
+══════════════════════════════════════════════════════════════════════ */
+router.post('/set-funders', protect, adminOnly, async (req, res) => {
+  try {
+    const { contractAddress, funders } = req.body
+    if (!contractAddress || funders === undefined)
+      return res.status(400).json({ message: 'contractAddress and funders required' })
+
+    const campaign = await Campaign.findOneAndUpdate(
+      { contractAddress },
+      { $set: { funders: Number(funders) } },
+      { new: true }
+    )
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found' })
+
+    res.json({ success: true, message: `funders set to ${funders}`, campaign })
+  } catch (err) {
     res.status(500).json({ message: err.message })
   }
 })
