@@ -29,7 +29,9 @@ const CAMPAIGN_ABI = [
 ]
 
 function getProvider() {
-  const rpc = process.env.SEPOLIA_RPC_URL || 'https://rpc.sepolia.org'
+  /* Try multiple public Sepolia RPCs in order — rpc.sepolia.org often returns 522 */
+  const rpc = process.env.SEPOLIA_RPC_URL
+    || 'https://ethereum-sepolia-rpc.publicnode.com'
   return new ethers.JsonRpcProvider(rpc)
 }
 

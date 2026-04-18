@@ -259,4 +259,112 @@ router.post('/:id/process-refund', protect, adminOnly, async (req, res) => {
   }
 })
 
+
+/* ══════════════════════════════════════════════════════════════════════
+   POST /upi/webhook  — Stripe webhook to mark donation as paid
+   IMPORTANT: server.js must parse this route with express.raw()
+   BEFORE express.json() — already done in your server.js
+══════════════════════════════════════════════════════════════════════ */
+router.post('/upi/webhook', async (req, res) => {
+  const sig     = req.headers['stripe-signature']
+  const secret  = process.env.STRIPE_WEBHOOK_SECRET
+
+  let event
+  try {
+    const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
+    if (secret && sig) {
+      event = stripe.webhooks.constructEvent(req.body, sig, secret)
+    } else {
+      /* No webhook secret configured — parse raw body manually (dev mode) */
+      const body = req.body instanceof Buffer ? req.body.toString() : req.body
+      event = JSON.parse(typeof body === 'string' ? body : JSON.stringify(body))
+    }
+  } catch (err) {
+    console.error('[Webhook] Signature verification failed:', err.message)
+    return res.status(400).json({ message: 'Webhook signature invalid' })
+  }
+
+  /* Handle checkout.session.completed — payment succeeded */
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object
+    try {
+      const donation = await Donation.findOne({ stripeSessionId: session.id })
+      if (donation && donation.status === 'created') {
+        donation.status                 = 'paid'
+        donation.stripePaymentIntentId  = session.payment_intent
+        donation.paidAt                 = new Date()
+        await donation.save()
+
+        /* Increment campaign raised amount in MongoDB */
+        await Campaign.findByIdAndUpdate(donation.campaign, {
+          \: { amountRaised: donation.amount, funders: 1 },
+        })
+
+        console.log('[Webhook] Donation marked paid:', donation._id, '₹' + donation.amount)
+      }
+    } catch (err) {
+      console.error('[Webhook] DB update failed:', err.message)
+    }
+  }
+
+  /* Handle payment_intent.payment_failed */
+  if (event.type === 'checkout.session.expired' || event.type === 'payment_intent.payment_failed') {
+    const session = event.data.object
+    try {
+      await Donation.findOneAndUpdate(
+        { stripeSessionId: session.id },
+        { status: 'failed' }
+      )
+    } catch (err) {
+      console.error('[Webhook] Failed status update error:', err.message)
+    }
+  }
+
+  res.json({ received: true })
+})
+
+/* ══════════════════════════════════════════════════════════════════════
+   POST /verify-payment  — frontend polls this after Stripe redirect
+   Called from CampaignDetail when ?payment=success appears in URL.
+   Checks Stripe directly and updates donation to paid if confirmed.
+══════════════════════════════════════════════════════════════════════ */
+router.post('/verify-payment', protect, async (req, res) => {
+  try {
+    const { sessionId } = req.body
+    if (!sessionId) return res.status(400).json({ message: 'sessionId required' })
+
+    const stripe  = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
+    const session = await stripe.checkout.sessions.retrieve(sessionId)
+
+    if (session.payment_status === 'paid') {
+      const donation = await Donation.findOne({ stripeSessionId: sessionId })
+
+      if (donation && donation.status === 'created') {
+        donation.status                = 'paid'
+        donation.stripePaymentIntentId = session.payment_intent
+        donation.paidAt                = new Date()
+        await donation.save()
+
+        /* Increment campaign raised amount */
+        await Campaign.findByIdAndUpdate(donation.campaign, {
+          \: { amountRaised: donation.amount, funders: 1 },
+        })
+
+        console.log('[VerifyPayment] Donation confirmed paid:', donation._id)
+        return res.json({ success: true, status: 'paid', donation })
+      }
+
+      /* Already updated (webhook beat us) */
+      if (donation && donation.status === 'paid') {
+        return res.json({ success: true, status: 'paid', donation })
+      }
+    }
+
+    res.json({ success: false, status: session.payment_status })
+  } catch (err) {
+    console.error('[VerifyPayment] error:', err.message)
+    res.status(500).json({ message: err.message })
+  }
+})
+
 export default router

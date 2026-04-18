@@ -320,9 +320,55 @@ export default function CampaignDetail() {
   const { id: contractAddress } = useParams()
   const navigate = useNavigate()
   const { account } = useWallet()
+  const { token } = useAuth?.() || {}
+  const authToken = token || localStorage.getItem('admin_token')
   const { campaign, loading, error, refetch } = useCampaign(contractAddress)
   const { donate, refund, claimFunds } = useCampaignContract(contractAddress)
   const [txStatus, setTxStatus] = useState(null)
+  const [paymentMsg, setPaymentMsg] = useState(null)
+
+  /* ── Verify Stripe payment when redirected back with ?payment=success ── */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const paymentStatus = params.get('payment')
+    if (!paymentStatus) return
+
+    /* Clean URL immediately */
+    window.history.replaceState({}, '', window.location.pathname)
+
+    if (paymentStatus === 'success') {
+      const sessionId = localStorage.getItem('stripe_session_id')
+      setPaymentMsg({ type: 'loading', text: 'Confirming your payment...' })
+
+      if (sessionId && authToken) {
+        axios.post(
+          `${API}/donations/verify-payment`,
+          { sessionId },
+          { headers: { Authorization: `Bearer ${authToken}` } }
+        )
+        .then(({ data }) => {
+          localStorage.removeItem('stripe_session_id')
+          if (data.status === 'paid') {
+            setPaymentMsg({ type: 'success', text: '✓ Payment confirmed! Thank you for your donation.' })
+            refetch()
+          } else {
+            setPaymentMsg({ type: 'warning', text: 'Payment received — confirmation pending.' })
+          }
+        })
+        .catch(() => {
+          setPaymentMsg({ type: 'success', text: '✓ Payment completed! It may take a moment to reflect.' })
+        })
+        .finally(() => setTimeout(() => setPaymentMsg(null), 6000))
+      } else {
+        setPaymentMsg({ type: 'success', text: '✓ Payment completed! Thank you for your donation.' })
+        refetch()
+        setTimeout(() => setPaymentMsg(null), 6000)
+      }
+    } else if (paymentStatus === 'cancelled') {
+      setPaymentMsg({ type: 'error', text: 'Payment was cancelled.' })
+      setTimeout(() => setPaymentMsg(null), 4000)
+    }
+  }, [])
 
   const handleWithdraw = async () => {
     setTxStatus('pending')
@@ -402,6 +448,21 @@ export default function CampaignDetail() {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           Back to campaigns
         </button>
+
+        {/* Payment result banner — shown after Stripe redirect */}
+        {paymentMsg && (
+          <div style={{
+            marginBottom:'1rem', padding:'.875rem 1rem', borderRadius:'var(--r-md)',
+            fontFamily:'var(--font-sans)', fontSize:'.875rem',
+            background: paymentMsg.type==='success' ? 'var(--teal-50)' : paymentMsg.type==='error' ? 'var(--error-50)' : 'var(--bg-muted)',
+            border: `1px solid ${paymentMsg.type==='success'?'#bbf7d0':paymentMsg.type==='error'?'#fecdd3':'var(--border)'}`,
+            color: paymentMsg.type==='success' ? 'var(--teal-700)' : paymentMsg.type==='error' ? 'var(--error-700)' : 'var(--text-muted)',
+            display:'flex', alignItems:'center', gap:8,
+          }}>
+            {paymentMsg.type==='loading' && <div className="spinner" style={{ width:14, height:14, flexShrink:0 }}/>}
+            {paymentMsg.text}
+          </div>
+        )}
 
         {txStatus === 'withdrawn' && <div className="alert alert-success" style={{ marginBottom:'1rem' }}>✓ Funds withdrawn to your wallet.</div>}
         {(isPending||isRejected) && <div className={`alert ${isRejected?'alert-error':'alert-warning'}`} style={{ marginBottom:'1rem' }}>{isPending?'⏳ Pending admin verification.':'✕ Campaign was rejected.'}</div>}
