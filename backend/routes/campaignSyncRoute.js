@@ -29,10 +29,32 @@ const CAMPAIGN_ABI = [
 ]
 
 function getProvider() {
-  /* Try multiple public Sepolia RPCs in order — rpc.sepolia.org often returns 522 */
+  /* Fallback chain: env var → publicnode → ankr → official */
   const rpc = process.env.SEPOLIA_RPC_URL
-    || 'https://ethereum-sepolia-rpc.publicnode.com'
+    || 'https://rpc2.sepolia.org'
   return new ethers.JsonRpcProvider(rpc)
+}
+
+async function getWorkingProvider() {
+  const rpcs = [
+    process.env.RPC_URL,             // Alchemy — already used by contractListener
+    process.env.SEPOLIA_RPC_URL,     // fallback from env
+    'https://ethereum-sepolia-rpc.publicnode.com',
+    'https://sepolia.drpc.org',
+    'https://1rpc.io/sepolia',
+  ].filter(Boolean)
+
+  for (const rpc of rpcs) {
+    try {
+      const provider = new ethers.JsonRpcProvider(rpc)
+      await provider.getBlockNumber()   // quick connectivity check
+      console.log('[SyncRoute] Using RPC:', rpc)
+      return provider
+    } catch {
+      console.warn('[SyncRoute] RPC failed, trying next:', rpc)
+    }
+  }
+  throw new Error('All Sepolia RPC endpoints failed')
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -42,7 +64,7 @@ function getProvider() {
 ══════════════════════════════════════════════════════════════════════ */
 router.post('/sync-raised', protect, adminOnly, async (req, res) => {
   try {
-    const provider = getProvider()
+    const provider = await getWorkingProvider()
 
     /* Find all ETH campaigns (not fiat) with a real contract address */
     const campaigns = await Campaign.find({
