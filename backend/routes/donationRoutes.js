@@ -59,6 +59,9 @@ router.post('/create-checkout', protect, async (req, res) => {
     const stripe      = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
     const amountPaise = Math.round(Number(amount) * 100)
 
+    /* Use request origin as fallback so redirect always goes to the right deployment */
+    const frontendBase = (req.headers.origin || process.env.FRONTEND_URL || '').replace(/\/$/, '')
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [{
@@ -70,8 +73,8 @@ router.post('/create-checkout', protect, async (req, res) => {
         quantity: 1,
       }],
       mode:        'payment',
-      success_url: `${process.env.FRONTEND_URL}/campaign/${campaign.contractAddress}?payment=success`,
-      cancel_url:  `${process.env.FRONTEND_URL}/campaign/${campaign.contractAddress}?payment=cancelled`,
+      success_url: `${frontendBase}/campaign/${campaign.contractAddress}?payment=success`,
+      cancel_url:  `${frontendBase}/campaign/${campaign.contractAddress}?payment=cancelled`,
       metadata: {
         campaignId: campaign._id.toString(),
         donorId:    req.user.id,
