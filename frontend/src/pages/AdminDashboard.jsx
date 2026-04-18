@@ -139,14 +139,16 @@ const AdminDashboard = () => {
   const syncEthRaised = async () => {
     setSyncing(true)
     try {
-      /* sync-raised updates amountRaised from contract view function */
+      /* Fire sync requests — don't await sync-funders (it takes time with chunked queries) */
       await axios.post(`${API}/campaigns/sync-raised`, {}, { headers })
-      /* sync-funders reads all historical Funded events for accurate donor count */
-      await axios.post(`${API}/campaigns/sync-funders`, {}, { headers }).catch(() => {})
+      /* sync-funders runs in background — don't block UI on it */
+      axios.post(`${API}/campaigns/sync-funders`, {}, { headers }).catch(() => {})
+      /* Wait 3 seconds for sync-raised to propagate then refetch */
+      await new Promise(r => setTimeout(r, 3000))
       await fetchAll()
       setLastSynced(new Date())
     } catch (err) {
-      await fetchAll()
+      try { await fetchAll() } catch {}
     } finally {
       setSyncing(false)
     }
