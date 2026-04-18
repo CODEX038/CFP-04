@@ -200,24 +200,39 @@ router.post('/sync-funders', protect, adminOnly, async (req, res) => {
       try {
         const contract = new ethers.Contract(c.contractAddress, CAMPAIGN_ABI_EVENTS, provider)
 
-        /* Try queryFilter first — may fail on some RPCs with block 0 */
+        /* Query in chunks of 40,000 blocks to stay under all RPC limits */
+        const CHUNK_SIZE = 40000
         let allFunded = []
-        try {
-          allFunded = await contract.queryFilter('Funded', 0, latestBlock)
-        } catch (qfErr) {
-          console.warn(`[SyncFunders] queryFilter failed for ${c.contractAddress}, trying getLogs:`, qfErr.message)
-          /* Fallback: use provider.getLogs directly */
-          const logs = await provider.getLogs({
-            address:   c.contractAddress,
-            topics:    [fundedTopic],
-            fromBlock: 0,
-            toBlock:   latestBlock,
-          })
-          allFunded = logs.map(log => {
-            const parsed = contract.interface.parseLog(log)
-            return { args: parsed.args }
-          }).filter(Boolean)
+        let chunkFrom = 0
+
+        while (chunkFrom <= latestBlock) {
+          const chunkTo = Math.min(chunkFrom + CHUNK_SIZE - 1, latestBlock)
+          try {
+            const chunk = await contract.queryFilter('Funded', chunkFrom, chunkTo)
+            allFunded = allFunded.concat(chunk)
+          } catch (chunkErr) {
+            /* Try getLogs for this chunk */
+            try {
+              const logs = await provider.getLogs({
+                address:   c.contractAddress,
+                topics:    [fundedTopic],
+                fromBlock: chunkFrom,
+                toBlock:   chunkTo,
+              })
+              const parsed = logs.map(log => {
+                try {
+                  const p = contract.interface.parseLog(log)
+                  return { args: p.args }
+                } catch { return null }
+              }).filter(Boolean)
+              allFunded = allFunded.concat(parsed)
+            } catch (logsErr) {
+              console.warn(`[SyncFunders] chunk ${chunkFrom}-${chunkTo} failed:`, logsErr.message)
+            }
+          }
+          chunkFrom += CHUNK_SIZE
         }
+        console.log(`[SyncFunders] "${c.title}" — total Funded events found: ${allFunded.length}`)
 
         const uniqueFunders = new Set(allFunded.map(e => e.args.funder.toLowerCase()))
         const totalRaised   = allFunded.reduce(

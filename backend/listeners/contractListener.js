@@ -123,7 +123,16 @@ export const startListener = async () => {
                 const logsRpc = 'https://ethereum-sepolia-rpc.publicnode.com'
                 const logsProvider = new ethers.JsonRpcProvider(logsRpc)
                 const logsContract = new ethers.Contract(c.contractAddress, CAMPAIGN_ABI, logsProvider)
-                const allFunded = await logsContract.queryFilter('Funded', 0, latest)
+                /* Query in 40,000 block chunks — publicnode limits to 50,000 */
+                const CHUNK = 40000
+                let allFunded = []
+                for (let from = 0; from <= latest; from += CHUNK) {
+                  const to = Math.min(from + CHUNK - 1, latest)
+                  try {
+                    const chunk = await logsContract.queryFilter('Funded', from, to)
+                    allFunded = allFunded.concat(chunk)
+                  } catch { /* skip failed chunk */ }
+                }
                 const uniqueFunders = new Set(allFunded.map(e => e.args.funder.toLowerCase()))
                 const totalRaised   = allFunded.reduce((s, e) => s + parseFloat(ethers.formatEther(e.args.amount)), 0)
 
