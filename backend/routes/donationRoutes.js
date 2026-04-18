@@ -1,19 +1,20 @@
 /**
  * routes/donationRoutes.js
- * Full refund system: request → admin review → approve/reject → email notify
  *
  * Endpoints:
- *   GET  /api/donations/my                         → donor's donation history
- *   POST /api/donations/create-checkout            → start UPI/Stripe payment
- *   GET  /api/donations/refund-requests            → admin: all pending refund requests
- *   POST /api/donations/:id/refund-request         → donor: submit refund request
- *   POST /api/donations/:id/process-refund         → admin: approve or reject
+ *   GET  /api/donations/my                  → donor history
+ *   POST /api/donations/create-checkout     → start Stripe checkout
+ *   POST /api/donations/upi/webhook         → Stripe webhook (raw body)
+ *   POST /api/donations/verify-payment      → frontend confirms after redirect
+ *   GET  /api/donations/refund-requests     → admin: all pending refunds
+ *   POST /api/donations/:id/refund-request  → donor submits
+ *   POST /api/donations/:id/process-refund  → admin approve/reject
  */
 
-import { Router }   from 'express'
-import Donation     from '../models/Donation.js'
-import Campaign     from '../models/Campaign.js'
-import User         from '../models/User.js'
+import { Router } from 'express'
+import Donation   from '../models/Donation.js'
+import Campaign   from '../models/Campaign.js'
+import User       from '../models/User.js'
 import { protect, adminOnly } from '../middleware/auth.js'
 import {
   sendRefundApprovedEmail,
@@ -23,8 +24,23 @@ import {
 
 const router = Router()
 
+/* ── Helper: mark donation paid + update campaign stats ─────────────────────
+   Idempotent — safe to call multiple times (webhook + verify-payment).
+──────────────────────────────────────────────────────────────────────────── */
+async function markDonationPaid(donation, paymentIntentId) {
+  if (!donation || donation.status === 'paid') return
+  donation.status                = 'paid'
+  donation.stripePaymentIntentId = paymentIntentId || donation.stripePaymentIntentId
+  donation.paidAt                = new Date()
+  await donation.save()
+  await Campaign.findByIdAndUpdate(donation.campaign, {
+    $inc: { amountRaised: donation.amount, funders: 1 },
+  })
+  console.log('[Donation] Marked paid:', donation._id.toString(), 'amount:', donation.amount)
+}
+
 /* ══════════════════════════════════════════════════════════════════════
-   GET /my  — donor's donation history
+   GET /my
 ══════════════════════════════════════════════════════════════════════ */
 router.get('/my', protect, async (req, res) => {
   try {
@@ -38,43 +54,39 @@ router.get('/my', protect, async (req, res) => {
 })
 
 /* ══════════════════════════════════════════════════════════════════════
-   POST /create-checkout  — initiate UPI/Stripe payment
+   POST /create-checkout
 ══════════════════════════════════════════════════════════════════════ */
 router.post('/create-checkout', protect, async (req, res) => {
   try {
     const { campaignId, amount, message } = req.body
-
     if (!campaignId || !amount || Number(amount) < 1)
-      return res.status(400).json({ message: 'campaignId and amount (min ₹1) are required' })
+      return res.status(400).json({ message: 'campaignId and amount (min 1) required' })
 
     const campaign = await Campaign.findOne({
       $or: [
-        { _id: campaignId.match(/^[0-9a-fA-F]{24}$/) ? campaignId : null },
         { contractAddress: campaignId },
-      ]
+        { _id: campaignId.match(/^[0-9a-fA-F]{24}$/) ? campaignId : null },
+      ],
     })
     if (!campaign) return res.status(404).json({ message: 'Campaign not found' })
 
-    /* Stripe checkout session */
-    const stripe      = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
-    const amountPaise = Math.round(Number(amount) * 100)
-
-    /* Use request origin as fallback so redirect always goes to the right deployment */
     const frontendBase = (req.headers.origin || process.env.FRONTEND_URL || '').replace(/\/$/, '')
+    const stripe       = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [{
         price_data: {
           currency:     'inr',
-          product_data: { name: campaign.title, description: `Donation to ${campaign.title}` },
-          unit_amount:  amountPaise,
+          product_data: { name: campaign.title, description: 'Donation to ' + campaign.title },
+          unit_amount:  Math.round(Number(amount) * 100),
         },
         quantity: 1,
       }],
       mode:        'payment',
-      success_url: `${frontendBase}/campaign/${campaign.contractAddress}?payment=success`,
-      cancel_url:  `${frontendBase}/campaign/${campaign.contractAddress}?payment=cancelled`,
+      /* {CHECKOUT_SESSION_ID} is replaced by Stripe — lets verify-payment work without localStorage */
+      success_url: frontendBase + '/campaign/' + campaign.contractAddress + '?payment=success&session_id={CHECKOUT_SESSION_ID}',
+      cancel_url:  frontendBase + '/campaign/' + campaign.contractAddress + '?payment=cancelled',
       metadata: {
         campaignId: campaign._id.toString(),
         donorId:    req.user.id,
@@ -83,27 +95,120 @@ router.post('/create-checkout', protect, async (req, res) => {
       },
     })
 
-    /* Create donation record in "created" state */
     await Donation.create({
-      campaign:         campaign._id,
-      donor:            req.user.id,
-      amount:           Number(amount),
-      currency:         'INR',
-      paymentMethod:    'upi',
-      status:           'created',
-      stripeSessionId:  session.id,
-      message:          message || '',
+      campaign:        campaign._id,
+      donor:           req.user.id,
+      amount:          Number(amount),
+      currency:        'INR',
+      paymentMethod:   'upi',
+      status:          'created',
+      stripeSessionId: session.id,
+      message:         message || '',
     })
 
     res.json({ url: session.url, sessionId: session.id })
   } catch (err) {
-    console.error('[DonationRoute] create-checkout error:', err.message)
+    console.error('[DonationRoute] create-checkout:', err.message)
     res.status(500).json({ message: err.message })
   }
 })
 
 /* ══════════════════════════════════════════════════════════════════════
-   GET /refund-requests  — admin: all pending refund requests
+   POST /upi/webhook  — Stripe sends events here
+   server.js already registers this path with express.raw() before json()
+══════════════════════════════════════════════════════════════════════ */
+router.post('/upi/webhook', async (req, res) => {
+  const sig    = req.headers['stripe-signature']
+  const secret = process.env.STRIPE_WEBHOOK_SECRET
+  let event
+
+  try {
+    const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
+    if (secret && sig) {
+      event = stripe.webhooks.constructEvent(req.body, sig, secret)
+    } else {
+      const raw = req.body instanceof Buffer ? req.body.toString('utf8') : JSON.stringify(req.body)
+      event     = JSON.parse(raw)
+    }
+  } catch (err) {
+    console.error('[Webhook] Failed:', err.message)
+    return res.status(400).json({ message: 'Webhook error: ' + err.message })
+  }
+
+  console.log('[Webhook] Event:', event.type)
+
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const session  = event.data.object
+      const donation = await Donation.findOne({ stripeSessionId: session.id })
+      await markDonationPaid(donation, session.payment_intent)
+    }
+
+    if (event.type === 'payment_intent.succeeded') {
+      const intent   = event.data.object
+      const donation = await Donation.findOne({ stripePaymentIntentId: intent.id })
+      if (donation) {
+        await markDonationPaid(donation, intent.id)
+      } else {
+        /* Try to find via session */
+        const stripe   = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
+        const sessions = await stripe.checkout.sessions.list({ payment_intent: intent.id, limit: 1 })
+        if (sessions.data.length) {
+          const d = await Donation.findOne({ stripeSessionId: sessions.data[0].id })
+          await markDonationPaid(d, intent.id)
+        }
+      }
+    }
+
+    if (event.type === 'checkout.session.expired') {
+      await Donation.findOneAndUpdate(
+        { stripeSessionId: event.data.object.id, status: 'created' },
+        { status: 'failed' }
+      )
+    }
+
+    if (event.type === 'payment_intent.payment_failed') {
+      await Donation.findOneAndUpdate(
+        { stripePaymentIntentId: event.data.object.id, status: 'created' },
+        { status: 'failed' }
+      )
+    }
+  } catch (err) {
+    console.error('[Webhook] Handler error:', err.message)
+  }
+
+  res.json({ received: true })
+})
+
+/* ══════════════════════════════════════════════════════════════════════
+   POST /verify-payment
+   Frontend calls this on redirect back from Stripe (?payment=success).
+   session_id is appended by Stripe via {CHECKOUT_SESSION_ID} in success_url.
+══════════════════════════════════════════════════════════════════════ */
+router.post('/verify-payment', protect, async (req, res) => {
+  try {
+    const { sessionId } = req.body
+    if (!sessionId) return res.status(400).json({ message: 'sessionId required' })
+
+    const stripe  = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
+    const session = await stripe.checkout.sessions.retrieve(sessionId)
+
+    if (session.payment_status === 'paid') {
+      const donation = await Donation.findOne({ stripeSessionId: sessionId })
+      if (!donation) return res.json({ success: false, message: 'Donation record not found.' })
+      await markDonationPaid(donation, session.payment_intent)
+      return res.json({ success: true, status: 'paid', donation })
+    }
+
+    res.json({ success: false, status: session.payment_status })
+  } catch (err) {
+    console.error('[VerifyPayment]:', err.message)
+    res.status(500).json({ message: err.message })
+  }
+})
+
+/* ══════════════════════════════════════════════════════════════════════
+   GET /refund-requests  — admin view
 ══════════════════════════════════════════════════════════════════════ */
 router.get('/refund-requests', protect, adminOnly, async (req, res) => {
   try {
@@ -118,251 +223,112 @@ router.get('/refund-requests', protect, adminOnly, async (req, res) => {
 })
 
 /* ══════════════════════════════════════════════════════════════════════
-   POST /:id/refund-request  — donor submits refund request
+   POST /:id/refund-request  — donor submits request
 ══════════════════════════════════════════════════════════════════════ */
 router.post('/:id/refund-request', protect, async (req, res) => {
   try {
     const { reason } = req.body
     if (!reason?.trim())
-      return res.status(400).json({ message: 'A reason is required for the refund request.' })
+      return res.status(400).json({ message: 'A reason is required.' })
 
     const donation = await Donation.findById(req.params.id)
       .populate('campaign', 'title contractAddress deadline goal paymentType')
       .populate('donor',    'name email')
 
-    if (!donation)
-      return res.status(404).json({ message: 'Donation not found.' })
+    if (!donation) return res.status(404).json({ message: 'Donation not found.' })
 
-    /* Security: only the donor can request their own refund */
     if (donation.donor._id.toString() !== req.user.id)
-      return res.status(403).json({ message: 'You can only request refunds for your own donations.' })
+      return res.status(403).json({ message: 'You can only refund your own donations.' })
 
     if (donation.status !== 'paid')
-      return res.status(400).json({ message: `Cannot request refund — current status is "${donation.status}".` })
+      return res.status(400).json({ message: 'Only paid donations can be refunded. Current: ' + donation.status })
 
     if (donation.paymentMethod !== 'upi')
-      return res.status(400).json({ message: 'Refunds via this portal are only for UPI/card donations.' })
+      return res.status(400).json({ message: 'ETH donations refund directly via smart contract.' })
 
-    /* 7-day refund window */
-    const daysSinceDonation = (Date.now() - new Date(donation.createdAt).getTime()) / 86400000
-    if (daysSinceDonation > 7)
-      return res.status(400).json({ message: 'Refund window has expired (7 days from donation date).' })
+    const daysSince = (Date.now() - new Date(donation.createdAt).getTime()) / 86400000
+    if (daysSince > 7)
+      return res.status(400).json({ message: 'Refund window expired (7 days from donation).' })
 
-    /* Update donation */
-    donation.status             = 'refund_requested'
-    donation.refundReason       = reason.trim()
-    donation.refundRequestedAt  = new Date()
+    donation.status            = 'refund_requested'
+    donation.refundReason      = reason.trim()
+    donation.refundRequestedAt = new Date()
     await donation.save()
 
-    /* Notify donor (fire-and-forget) */
     sendRefundRequestedEmail(donation).catch(e =>
       console.warn('[DonationRoute] refund-request email failed:', e.message)
     )
 
-    res.json({
-      success: true,
-      message: 'Refund request submitted. Our team will review it within 2-3 business days.',
-      donation,
-    })
+    res.json({ success: true, message: 'Request submitted. Review within 2-3 business days.', donation })
   } catch (err) {
-    console.error('[DonationRoute] refund-request error:', err.message)
+    console.error('[DonationRoute] refund-request:', err.message)
     res.status(500).json({ message: err.message })
   }
 })
 
 /* ══════════════════════════════════════════════════════════════════════
-   POST /:id/process-refund  — admin approves or rejects refund
+   POST /:id/process-refund  — admin approve or reject
 ══════════════════════════════════════════════════════════════════════ */
 router.post('/:id/process-refund', protect, adminOnly, async (req, res) => {
   try {
-    const { action, note } = req.body  // action: "approve" | "reject"
-
+    const { action, note } = req.body
     if (!['approve', 'reject'].includes(action))
-      return res.status(400).json({ message: 'action must be "approve" or "reject"' })
-
+      return res.status(400).json({ message: 'action must be approve or reject' })
     if (action === 'reject' && !note?.trim())
-      return res.status(400).json({ message: 'A reason is required when rejecting a refund.' })
+      return res.status(400).json({ message: 'Reason required when rejecting.' })
 
     const donation = await Donation.findById(req.params.id)
       .populate('campaign', 'title contractAddress')
       .populate('donor',    'name email')
 
-    if (!donation)
-      return res.status(404).json({ message: 'Donation not found.' })
-
+    if (!donation) return res.status(404).json({ message: 'Donation not found.' })
     if (donation.status !== 'refund_requested')
-      return res.status(400).json({ message: `Cannot process — status is "${donation.status}", expected "refund_requested".` })
+      return res.status(400).json({ message: 'Status must be refund_requested. Current: ' + donation.status })
 
-    /* ── APPROVE ── */
     if (action === 'approve') {
       let stripeRefundId = null
-
-      /* Attempt Stripe refund if payment ID exists */
-      if (donation.stripePaymentIntentId || donation.stripeSessionId) {
-        try {
-          const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
-
-          let paymentIntentId = donation.stripePaymentIntentId
-          if (!paymentIntentId && donation.stripeSessionId) {
-            const session    = await stripe.checkout.sessions.retrieve(donation.stripeSessionId)
-            paymentIntentId  = session.payment_intent
-          }
-
-          if (paymentIntentId) {
-            const refund    = await stripe.refunds.create({ payment_intent: paymentIntentId })
-            stripeRefundId  = refund.id
-            console.log('[DonationRoute] Stripe refund created:', stripeRefundId)
-          }
-        } catch (stripeErr) {
-          console.error('[DonationRoute] Stripe refund failed:', stripeErr.message)
-          /* Non-fatal — admin may process manually */
+      try {
+        const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
+        let piId     = donation.stripePaymentIntentId
+        if (!piId && donation.stripeSessionId) {
+          const s = await stripe.checkout.sessions.retrieve(donation.stripeSessionId)
+          piId    = s.payment_intent
         }
+        if (piId) {
+          const intent   = await stripe.paymentIntents.retrieve(piId)
+          const chargeId = intent.latest_charge
+          if (chargeId) {
+            const refund   = await stripe.refunds.create({ charge: chargeId })
+            stripeRefundId = refund.id
+          }
+        }
+      } catch (e) {
+        console.error('[DonationRoute] Stripe refund error:', e.message)
       }
 
-      donation.status              = 'refunded'
-      donation.refundProcessedAt   = new Date()
-      donation.refundNote          = note?.trim() || 'Refund approved by admin.'
+      donation.status            = 'refunded'
+      donation.refundProcessedAt = new Date()
+      donation.refundNote        = note?.trim() || 'Approved by admin.'
       if (stripeRefundId) donation.stripeRefundId = stripeRefundId
       await donation.save()
 
-      /* Notify donor */
       sendRefundApprovedEmail(donation).catch(e =>
-        console.warn('[DonationRoute] refund-approved email failed:', e.message)
+        console.warn('[DonationRoute] refund-approved email:', e.message)
       )
-
-      return res.json({
-        success: true,
-        message: 'Refund approved and processed.',
-        stripeRefundId,
-        donation,
-      })
+      return res.json({ success: true, message: 'Refund approved.', stripeRefundId, donation })
     }
 
-    /* ── REJECT ── */
     donation.status            = 'refund_rejected'
     donation.refundProcessedAt = new Date()
     donation.refundNote        = note.trim()
     await donation.save()
 
     sendRefundRejectedEmail(donation).catch(e =>
-      console.warn('[DonationRoute] refund-rejected email failed:', e.message)
+      console.warn('[DonationRoute] refund-rejected email:', e.message)
     )
-
-    res.json({
-      success: true,
-      message: 'Refund request rejected.',
-      donation,
-    })
+    res.json({ success: true, message: 'Refund rejected.', donation })
   } catch (err) {
-    console.error('[DonationRoute] process-refund error:', err.message)
-    res.status(500).json({ message: err.message })
-  }
-})
-
-
-/* ══════════════════════════════════════════════════════════════════════
-   POST /upi/webhook  — Stripe webhook to mark donation as paid
-   IMPORTANT: server.js must parse this route with express.raw()
-   BEFORE express.json() — already done in your server.js
-══════════════════════════════════════════════════════════════════════ */
-router.post('/upi/webhook', async (req, res) => {
-  const sig     = req.headers['stripe-signature']
-  const secret  = process.env.STRIPE_WEBHOOK_SECRET
-
-  let event
-  try {
-    const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
-    if (secret && sig) {
-      event = stripe.webhooks.constructEvent(req.body, sig, secret)
-    } else {
-      /* No webhook secret configured — parse raw body manually (dev mode) */
-      const body = req.body instanceof Buffer ? req.body.toString() : req.body
-      event = JSON.parse(typeof body === 'string' ? body : JSON.stringify(body))
-    }
-  } catch (err) {
-    console.error('[Webhook] Signature verification failed:', err.message)
-    return res.status(400).json({ message: 'Webhook signature invalid' })
-  }
-
-  /* Handle checkout.session.completed — payment succeeded */
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object
-    try {
-      const donation = await Donation.findOne({ stripeSessionId: session.id })
-      if (donation && donation.status === 'created') {
-        donation.status                 = 'paid'
-        donation.stripePaymentIntentId  = session.payment_intent
-        donation.paidAt                 = new Date()
-        await donation.save()
-
-        /* Increment campaign raised amount in MongoDB */
-        await Campaign.findByIdAndUpdate(donation.campaign, {
-          $inc: { amountRaised: donation.amount, funders: 1 },
-        })
-
-        console.log('[Webhook] Donation marked paid:', donation._id, '₹' + donation.amount)
-      }
-    } catch (err) {
-      console.error('[Webhook] DB update failed:', err.message)
-    }
-  }
-
-  /* Handle payment_intent.payment_failed */
-  if (event.type === 'checkout.session.expired' || event.type === 'payment_intent.payment_failed') {
-    const session = event.data.object
-    try {
-      await Donation.findOneAndUpdate(
-        { stripeSessionId: session.id },
-        { status: 'failed' }
-      )
-    } catch (err) {
-      console.error('[Webhook] Failed status update error:', err.message)
-    }
-  }
-
-  res.json({ received: true })
-})
-
-/* ══════════════════════════════════════════════════════════════════════
-   POST /verify-payment  — frontend polls this after Stripe redirect
-   Called from CampaignDetail when ?payment=success appears in URL.
-   Checks Stripe directly and updates donation to paid if confirmed.
-══════════════════════════════════════════════════════════════════════ */
-router.post('/verify-payment', protect, async (req, res) => {
-  try {
-    const { sessionId } = req.body
-    if (!sessionId) return res.status(400).json({ message: 'sessionId required' })
-
-    const stripe  = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
-    const session = await stripe.checkout.sessions.retrieve(sessionId)
-
-    if (session.payment_status === 'paid') {
-      const donation = await Donation.findOne({ stripeSessionId: sessionId })
-
-      if (donation && donation.status === 'created') {
-        donation.status                = 'paid'
-        donation.stripePaymentIntentId = session.payment_intent
-        donation.paidAt                = new Date()
-        await donation.save()
-
-        /* Increment campaign raised amount */
-        await Campaign.findByIdAndUpdate(donation.campaign, {
-          $inc: { amountRaised: donation.amount, funders: 1 },
-        })
-
-        console.log('[VerifyPayment] Donation confirmed paid:', donation._id)
-        return res.json({ success: true, status: 'paid', donation })
-      }
-
-      /* Already updated (webhook beat us) */
-      if (donation && donation.status === 'paid') {
-        return res.json({ success: true, status: 'paid', donation })
-      }
-    }
-
-    res.json({ success: false, status: session.payment_status })
-  } catch (err) {
-    console.error('[VerifyPayment] error:', err.message)
+    console.error('[DonationRoute] process-refund:', err.message)
     res.status(500).json({ message: err.message })
   }
 })

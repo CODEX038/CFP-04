@@ -337,7 +337,8 @@ export default function CampaignDetail() {
     window.history.replaceState({}, '', window.location.pathname)
 
     if (paymentStatus === 'success') {
-      const sessionId = localStorage.getItem('stripe_session_id')
+      /* Stripe appends session_id to success_url via {CHECKOUT_SESSION_ID} */
+      const sessionId = params.get('session_id') || localStorage.getItem('stripe_session_id')
       setPaymentMsg({ type: 'loading', text: 'Confirming your payment...' })
 
       if (sessionId && authToken) {
