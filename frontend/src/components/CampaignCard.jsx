@@ -36,7 +36,7 @@ const CATEGORY_COLORS = {
 export default function CampaignCard({ campaign }) {
   const navigate = useNavigate()
   const isFiat  = campaign.paymentType === 'fiat'
-  const raised  = isFiat ? (campaign.raised || 0) : parseFloat(campaign.amountRaised || 0)
+  const raised  = parseFloat(campaign.amountRaised || campaign.raised || 0)
   const goal    = parseFloat(campaign.goal || 0)
   const pct     = goal > 0 ? Math.min((raised / goal) * 100, 100) : 0
   const time    = timeLeft(campaign.deadline)

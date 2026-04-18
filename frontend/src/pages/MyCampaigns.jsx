@@ -33,7 +33,7 @@ const StatusBadge = ({ status }) => {
 const getCampaignStatus = (c) => {
   if (c.paused) return 'paused'
   const deadlineMs = c.deadline > 1e12 ? c.deadline : c.deadline * 1000
-  const pct = parseFloat(c.amountRaised) / parseFloat(c.goal)
+  const pct = parseFloat(c.amountRaised || c.raised || 0) / parseFloat(c.goal || 1)
   if (pct >= 1) return 'funded'
   if (Date.now() >= deadlineMs) return 'expired'
   if ((deadlineMs - Date.now()) < 864e5) return 'expiring'
@@ -51,7 +51,7 @@ export default function MyCampaigns() {
   const ethMine  = mine.filter(c => c.paymentType !== 'fiat')
   const fiatMine = mine.filter(c => c.paymentType === 'fiat')
   const totalEth = ethMine.reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0)
-  const totalInr = fiatMine.reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0)
+  const totalInr = fiatMine.reduce((s, c) => s + parseFloat(c.amountRaised || c.raised || 0), 0)
   const activeCnt = mine.filter(c => !c.paused && Date.now() < (c.deadline > 1e12 ? c.deadline : c.deadline * 1000)).length
   const fundedCnt = mine.filter(c => parseFloat(c.amountRaised || 0) >= parseFloat(c.goal)).length
 

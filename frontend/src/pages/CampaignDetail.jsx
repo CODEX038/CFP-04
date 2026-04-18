@@ -206,7 +206,7 @@ function UpiEndedPanel({ campaign, isGoalMet, pct }) {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '.875rem' }}>
               <span style={{ color: 'var(--text-muted)' }}>Raised</span>
-              <strong style={{ color: isGoalMet ? 'var(--teal-600)' : 'var(--purple-600)' }}>{fmt(campaign.raised || campaign.amountRaised || 0, true)}</strong>
+              <strong style={{ color: isGoalMet ? 'var(--teal-600)' : 'var(--purple-600)' }}>{fmt(parseFloat(campaign.amountRaised || campaign.raised || 0), true)}</strong>
             </div>
             <div style={{ height: 8, background: 'var(--bg-muted)', borderRadius: 'var(--r-full)', overflow: 'hidden', marginBottom: 6 }}>
               <div style={{ height: '100%', width: `${pct}%`, borderRadius: 'var(--r-full)', background: isGoalMet ? 'linear-gradient(90deg,#22c55e,#16a34a)' : 'linear-gradient(90deg,var(--purple-600),var(--amber-500))' }}/>
@@ -395,7 +395,7 @@ export default function CampaignDetail() {
   )
 
   const isFiat     = campaign.paymentType === 'fiat'
-  const raised     = isFiat ? (campaign.raised || 0) : parseFloat(campaign.amountRaised || 0)
+  const raised     = parseFloat(campaign.amountRaised || campaign.raised || 0)
   const goal       = parseFloat(campaign.goal || 0)
   const pct        = goal > 0 ? Math.min((raised / goal) * 100, 100) : 0
   const deadlineMs = campaign.deadline > 1e12 ? campaign.deadline : campaign.deadline * 1000

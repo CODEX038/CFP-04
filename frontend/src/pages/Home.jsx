@@ -29,7 +29,7 @@ export default function Home() {
   [campaigns])
 
   const totalRaised = useMemo(() =>
-    verified.reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0),
+    verified.reduce((s, c) => s + parseFloat(c.amountRaised || c.raised || 0), 0),
   [verified])
 
   const filtered = useMemo(() => {

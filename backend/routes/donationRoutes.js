@@ -34,7 +34,7 @@ async function markDonationPaid(donation, paymentIntentId) {
   donation.paidAt                = new Date()
   await donation.save()
   await Campaign.findByIdAndUpdate(donation.campaign, {
-    $inc: { amountRaised: donation.amount, funders: 1 },
+    $inc: { amountRaised: donation.amount, raised: donation.amount, funders: 1 },
   })
   console.log('[Donation] Marked paid:', donation._id.toString(), 'amount:', donation.amount)
 }
