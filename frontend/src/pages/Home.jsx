@@ -28,8 +28,16 @@ export default function Home() {
     campaigns.filter(c => c.verificationStatus === 'verified' && !c.paused),
   [campaigns])
 
-  const totalRaised = useMemo(() =>
-    verified.reduce((s, c) => s + parseFloat(c.amountRaised || c.raised || 0), 0),
+  const totalEthRaised = useMemo(() =>
+    verified
+      .filter(c => c.paymentType !== 'fiat')
+      .reduce((s, c) => s + parseFloat(c.amountRaised || 0), 0),
+  [verified])
+
+  const totalInrRaised = useMemo(() =>
+    verified
+      .filter(c => c.paymentType === 'fiat')
+      .reduce((s, c) => s + parseFloat(c.amountRaised || c.raised || 0), 0),
   [verified])
 
   const filtered = useMemo(() => {
@@ -164,10 +172,11 @@ export default function Home() {
           {/* Stats row */}
           <div style={{ display:'flex', gap:'clamp(1rem, 3vw, 2.5rem)', flexWrap:'wrap' }}>
             {[
-              { val: `${verified.length}+`, lbl: 'Campaigns' },
-              { val: totalRaised.toFixed(2), lbl: 'ETH raised' },
-              { val: '100%', lbl: 'Refund protected' },
-            ].map(s => (
+              { val: `${verified.length}+`,                                           lbl: 'Campaigns' },
+              { val: `${totalEthRaised.toFixed(4)}`,                                  lbl: 'ETH raised' },
+              totalInrRaised > 0 ? { val: `₹${(totalInrRaised/1000).toFixed(1)}K`,   lbl: 'INR raised' } : null,
+              { val: '100%',                                                           lbl: 'Refund protected' },
+            ].filter(Boolean).map(s => (
               <div key={s.lbl} style={{ display:'flex', alignItems:'baseline', gap:6 }}>
                 <span style={{ fontFamily:'var(--font-serif)', fontSize:'clamp(1.3rem, 3vw, 1.75rem)', color:'#fff', lineHeight:1 }}>{s.val}</span>
                 <span style={{ fontSize:'0.78rem', color:'rgba(255,255,255,0.5)', fontWeight:500 }}>{s.lbl}</span>
