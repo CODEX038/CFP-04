@@ -39,6 +39,18 @@ async function markDonationPaid(donation, paymentIntentId) {
   console.log('[Donation] Marked paid:', donation._id.toString(), 'amount:', donation.amount)
 }
 
+/* Find donation by Stripe session ID — checks both new stripeSessionId field
+   and legacy razorpayOrderId field (used in old schema) */
+async function findDonationBySession(sessionId) {
+  if (!sessionId) return null
+  return await Donation.findOne({
+    $or: [
+      { stripeSessionId:  sessionId },
+      { razorpayOrderId:  sessionId },  // legacy field used before schema update
+    ]
+  })
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    GET /my
 ══════════════════════════════════════════════════════════════════════ */
@@ -103,6 +115,7 @@ router.post('/create-checkout', protect, async (req, res) => {
       paymentMethod:   'upi',
       status:          'created',
       stripeSessionId: session.id,
+      razorpayOrderId: session.id,   // also save to legacy field for old schema compatibility
       message:         message || '',
     })
 
@@ -140,24 +153,28 @@ router.post('/upi/webhook', async (req, res) => {
   try {
     if (event.type === 'checkout.session.completed') {
       const session  = event.data.object
-      const donation = await Donation.findOne({ stripeSessionId: session.id })
+      const donation = await findDonationBySession(session.id)
       await markDonationPaid(donation, session.payment_intent)
     }
 
     if (event.type === 'payment_intent.succeeded') {
       const intent   = event.data.object
-      const donation = await Donation.findOne({ stripePaymentIntentId: intent.id })
-      if (donation) {
-        await markDonationPaid(donation, intent.id)
-      } else {
-        /* Try to find via session */
+      /* Try by payment intent ID first */
+      let donation = await Donation.findOne({
+        $or: [
+          { stripePaymentIntentId: intent.id },
+          { razorpayPaymentId: intent.id },
+        ]
+      })
+      if (!donation) {
+        /* Fallback: find session linked to this payment intent */
         const stripe   = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY)
         const sessions = await stripe.checkout.sessions.list({ payment_intent: intent.id, limit: 1 })
         if (sessions.data.length) {
-          const d = await Donation.findOne({ stripeSessionId: sessions.data[0].id })
-          await markDonationPaid(d, intent.id)
+          donation = await findDonationBySession(sessions.data[0].id)
         }
       }
+      await markDonationPaid(donation, intent.id)
     }
 
     if (event.type === 'checkout.session.expired') {
@@ -194,7 +211,7 @@ router.post('/verify-payment', protect, async (req, res) => {
     const session = await stripe.checkout.sessions.retrieve(sessionId)
 
     if (session.payment_status === 'paid') {
-      const donation = await Donation.findOne({ stripeSessionId: sessionId })
+      const donation = await findDonationBySession(sessionId)
       if (!donation) return res.json({ success: false, message: 'Donation record not found.' })
       await markDonationPaid(donation, session.payment_intent)
       return res.json({ success: true, status: 'paid', donation })
