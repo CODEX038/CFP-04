@@ -609,11 +609,11 @@ const UserLogin = () => {
                   <div className="ul-grid-2">
                     <div>
                       <label style={labelStyle}>Full name</label>
-                      <Input value={reg.name} onChange={e => setR("name", e.target.value)} placeholder="Bhushan Patil"/>
+                      <Input value={reg.name} onChange={e => setR("name", e.target.value)} placeholder="Enter your full name"/>
                     </div>
                     <div>
                       <label style={labelStyle}>Username</label>
-                      <Input value={reg.username} onChange={e => setR("username", e.target.value)} placeholder="bhushan_k"/>
+                      <Input value={reg.username} onChange={e => setR("username", e.target.value)} placeholder="Enter your username"/>
                     </div>
                   </div>
 

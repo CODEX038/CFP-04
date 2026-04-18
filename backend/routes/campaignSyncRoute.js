@@ -137,6 +137,77 @@ router.post('/sync-raised', protect, adminOnly, async (req, res) => {
 })
 
 /* ══════════════════════════════════════════════════════════════════════
+   POST /api/campaigns/sync-funders
+   Admin-only: reads all historical Funded events from chain and updates
+   funders count + amountRaised for all ETH campaigns.
+   Use this after deploying contractListener.js to backfill existing data.
+══════════════════════════════════════════════════════════════════════ */
+router.post('/sync-funders', protect, adminOnly, async (req, res) => {
+  try {
+    const provider = await getWorkingProvider()
+
+    const CAMPAIGN_ABI_EVENTS = [
+      {
+        type: 'event', name: 'Funded',
+        inputs: [
+          { type: 'address', name: 'funder', indexed: true },
+          { type: 'uint256', name: 'amount', indexed: false },
+        ],
+      },
+    ]
+
+    const campaigns = await Campaign.find({
+      paymentType:     { $ne: 'fiat' },
+      contractAddress: { $regex: /^0x[0-9a-fA-F]{40}$/ },
+    })
+
+    let synced = 0
+    let errors = 0
+    const results = []
+
+    await Promise.allSettled(campaigns.map(async (c) => {
+      try {
+        const contract = new ethers.Contract(c.contractAddress, CAMPAIGN_ABI_EVENTS, provider)
+        const allFunded = await contract.queryFilter('Funded', 0, 'latest')
+
+        const uniqueFunders = new Set(allFunded.map(e => e.args.funder.toLowerCase()))
+        const totalRaised   = allFunded.reduce(
+          (s, e) => s + parseFloat(ethers.formatEther(e.args.amount)), 0
+        )
+
+        await Campaign.findByIdAndUpdate(c._id, {
+          $set: {
+            funders:      uniqueFunders.size,
+            amountRaised: totalRaised,
+            raised:       totalRaised,
+          },
+        })
+
+        results.push({
+          title:    c.title,
+          funders:  uniqueFunders.size,
+          raised:   totalRaised,
+        })
+        synced++
+        console.log(`[SyncFunders] "${c.title}" → ${uniqueFunders.size} funders, ${totalRaised} ETH`)
+      } catch (err) {
+        console.warn(`[SyncFunders] Failed for ${c.contractAddress}:`, err.message)
+        errors++
+      }
+    }))
+
+    res.json({
+      success: true,
+      message: `Synced funders for ${synced} campaigns. ${errors} failed.`,
+      campaigns: results,
+    })
+  } catch (err) {
+    console.error('[SyncFunders] error:', err.message)
+    res.status(500).json({ message: err.message })
+  }
+})
+
+/* ══════════════════════════════════════════════════════════════════════
    GET /api/campaigns/stats
    Returns pre-calculated stats including live ETH raised from MongoDB
    (after a sync has been done).

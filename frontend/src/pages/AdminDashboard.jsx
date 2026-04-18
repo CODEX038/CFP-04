@@ -139,7 +139,10 @@ const AdminDashboard = () => {
   const syncEthRaised = async () => {
     setSyncing(true)
     try {
+      /* sync-raised updates amountRaised from contract view function */
       await axios.post(`${API}/campaigns/sync-raised`, {}, { headers })
+      /* sync-funders reads all historical Funded events for accurate donor count */
+      await axios.post(`${API}/campaigns/sync-funders`, {}, { headers }).catch(() => {})
       await fetchAll()
       setLastSynced(new Date())
     } catch (err) {
