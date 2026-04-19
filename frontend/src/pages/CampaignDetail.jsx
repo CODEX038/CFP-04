@@ -29,25 +29,38 @@ const timeLeft = (deadline) => {
    ETH REFUND PANEL
 ══════════════════════════════════════════════════════════════════ */
 function EthRefundPanel({ campaign, isGoalMet, pct, refundFn, txStatus, setTxStatus, refetch }) {
-  const { token } = useAuth?.() || {}
-  const authToken = token || localStorage.getItem('admin_token')
-  const [myDonation,   setMyDonation]   = useState(null)
-  const [loadingCheck, setLoadingCheck] = useState(true)
+  const { account } = useWallet()
+  const [myContribution, setMyContribution] = useState(null)  // in ETH string
+  const [loadingCheck,   setLoadingCheck]   = useState(true)
 
+  /* Check contribution directly from smart contract — not MongoDB.
+     ETH donations go on-chain only, never stored in MongoDB. */
   useEffect(() => {
-    if (!authToken) { setLoadingCheck(false); return }
-    axios.get(`${API}/donations/my`, { headers: { Authorization: `Bearer ${authToken}` } })
-      .then(({ data }) => {
-        const list = data.data || []
-        const match = list.find(d =>
-          (d.campaign?._id === campaign._id || d.campaign?.contractAddress === campaign.contractAddress) &&
-          d.status === 'paid'
-        )
-        setMyDonation(match || null)
-      })
-      .catch(() => setMyDonation(null))
-      .finally(() => setLoadingCheck(false))
-  }, [authToken, campaign._id, campaign.contractAddress])
+    if (!account || !campaign.contractAddress) { setLoadingCheck(false); return }
+
+    const MINIMAL_ABI = [
+      'function getContribution(address) view returns (uint256)',
+      'function canRefund(address) view returns (bool)',
+    ]
+
+    const checkOnChain = async () => {
+      try {
+        const { ethers } = await import('ethers')
+        const provider   = new ethers.BrowserProvider(window.ethereum)
+        const contract   = new ethers.Contract(campaign.contractAddress, MINIMAL_ABI, provider)
+        const contributed = await contract.getContribution(account)
+        const ethAmount   = ethers.formatEther(contributed)
+        setMyContribution(parseFloat(ethAmount) > 0 ? ethAmount : null)
+      } catch (err) {
+        console.warn('[EthRefundPanel] Contract check failed:', err.message)
+        setMyContribution(null)
+      } finally {
+        setLoadingCheck(false)
+      }
+    }
+
+    checkOnChain()
+  }, [account, campaign.contractAddress])
 
   const handleEthRefund = async () => {
     if (!refundFn) return
@@ -102,13 +115,13 @@ function EthRefundPanel({ campaign, isGoalMet, pct, refundFn, txStatus, setTxSta
               <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, color: 'var(--teal-700)', margin: '0 0 4px', fontSize: '.9rem' }}>Refund successful!</p>
               <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.78rem', color: 'var(--teal-600)', margin: 0 }}>Your ETH has been returned to your wallet.</p>
             </div>
-          ) : myDonation ? (
+          ) : myContribution ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '.75rem' }}>
               <div style={{ background: 'var(--purple-50)', border: '1px solid var(--purple-200)', borderRadius: 'var(--r-md)', padding: '1rem' }}>
-                <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.72rem', fontWeight: 700, color: 'var(--purple-600)', textTransform: 'uppercase', letterSpacing: '.04em', margin: '0 0 8px' }}>Your donation</p>
+                <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.72rem', fontWeight: 700, color: 'var(--purple-600)', textTransform: 'uppercase', letterSpacing: '.04em', margin: '0 0 8px' }}>Your contribution (on-chain)</p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.875rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Amount donated</span>
-                  <span style={{ fontWeight: 800, color: 'var(--purple-600)', fontSize: '1.1rem' }}>{fmt(myDonation.amount, false)}</span>
+                  <span style={{ fontWeight: 800, color: 'var(--purple-600)', fontSize: '1.1rem' }}>{parseFloat(myContribution).toFixed(4)} ETH</span>
                 </div>
               </div>
 
@@ -130,15 +143,20 @@ function EthRefundPanel({ campaign, isGoalMet, pct, refundFn, txStatus, setTxSta
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: refundFn ? 1 : .5,
                 }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                  Claim Refund ({fmt(myDonation.amount, false)})
+                  Claim Refund ({parseFloat(myContribution).toFixed(4)} ETH)
                 </button>
               )}
+            </div>
+          ) : !account ? (
+            <div style={{ background: 'var(--bg-muted)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '1rem', textAlign: 'center' }}>
+              <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, color: 'var(--text-muted)', margin: '0 0 4px', fontSize: '.875rem' }}>Connect MetaMask to check your refund</p>
+              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.75rem', color: 'var(--text-subtle)', margin: 0 }}>Your wallet address is needed to verify your donation</p>
             </div>
           ) : (
             <div style={{ background: 'var(--bg-muted)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '1rem', textAlign: 'center' }}>
               <div style={{ fontSize: '1.75rem', marginBottom: 8 }}>💸</div>
-              <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, color: 'var(--text-muted)', margin: '0 0 4px', fontSize: '.875rem' }}>You didn't donate to this campaign</p>
-              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.75rem', color: 'var(--text-subtle)', margin: 0 }}>Only donors can claim refunds</p>
+              <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, color: 'var(--text-muted)', margin: '0 0 4px', fontSize: '.875rem' }}>No refundable contribution found</p>
+              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '.75rem', color: 'var(--text-subtle)', margin: 0 }}>This wallet ({account.slice(0,6)}...{account.slice(-4)}) has no pending contribution</p>
             </div>
           )
         )}
