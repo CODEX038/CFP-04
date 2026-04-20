@@ -14,7 +14,10 @@ async function resolveFileUrl(file) {
   if (cloudinaryReady && file.path) {
     try {
       const { uploadFromDisk } = await import('../services/cloudinaryService.js')
-      const result = await uploadFromDisk(file.path, 'campaign-docs')
+      /* Pass originalName so PDFs use resource_type: raw → /raw/upload/ URL */
+      const result = await uploadFromDisk(file.path, 'campaign-docs', {
+        originalName: file.originalname || file.filename || path.basename(file.path),
+      })
       return result.url
     } catch (err) {
       console.warn(`Cloudinary upload failed for ${file.fieldname}: ${err.message}`)
@@ -30,7 +33,6 @@ async function resolveFileUrl(file) {
 async function findCreator(campaign) {
   const orConditions = []
 
-  // wallet address — skip pseudo-addresses like '0xfiat_...' and 'unknown'
   if (
     campaign.owner &&
     campaign.owner !== 'unknown' &&
@@ -43,7 +45,6 @@ async function findCreator(campaign) {
     orConditions.push({ username: campaign.ownerUsername.toLowerCase() })
   }
 
-  // ownerEmail stored on campaign — most reliable for fiat creators
   if (campaign.ownerEmail) {
     orConditions.push({ email: campaign.ownerEmail.toLowerCase() })
   }
@@ -63,11 +64,8 @@ export const uploadCampaignDocuments = async (req, res) => {
 
     const campaign = await Campaign.findOne({
       $or: [
-        // MongoDB ObjectId
         ...(id.match(/^[a-f\d]{24}$/i) ? [{ _id: id }] : []),
-        // Real contract address (ETH)
         ...(!id.startsWith('0xfiat_') ? [{ contractAddress: id.toLowerCase() }] : []),
-        // Fiat pseudo-address — match exactly as stored
         { contractAddress: id },
       ],
     })
@@ -110,7 +108,7 @@ export const uploadCampaignDocuments = async (req, res) => {
           docId:    fieldname,
           name:     DOC_NAMES[fieldname] || fieldname,
           url,
-          filename: file.filename || path.basename(file.path || ''),
+          filename: file.originalname || file.filename || path.basename(file.path || ''),
           status:   'pending',
         })
       } catch (err) {
@@ -188,7 +186,7 @@ export const getCampaignForReview = async (req, res) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PATCH /api/campaign-verification/:id/verify   ← notifies user ✅
+// PATCH /api/campaign-verification/:id/verify
 // ─────────────────────────────────────────────────────────────────────────────
 export const verifyCampaign = async (req, res) => {
   try {
@@ -224,7 +222,7 @@ export const verifyCampaign = async (req, res) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PATCH /api/campaign-verification/:id/reject   ← notifies user ✅
+// PATCH /api/campaign-verification/:id/reject
 // ─────────────────────────────────────────────────────────────────────────────
 export const rejectCampaign = async (req, res) => {
   try {
@@ -288,11 +286,8 @@ export const updateDocumentStatus = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: enrich campaigns array with creator info
-// Works correctly for both ETH campaigns (wallet owner) and fiat campaigns
-// (pseudo-address owner, looked up by username or email instead)
 // ─────────────────────────────────────────────────────────────────────────────
 async function enrichWithCreator(campaigns) {
-  // Collect all lookup values across all campaigns
   const wallets   = []
   const usernames = []
   const emails    = []
@@ -315,7 +310,6 @@ async function enrichWithCreator(campaigns) {
     users = await User.find({ $or: orConditions }).lean()
   }
 
-  // Build lookup maps for fast matching
   const byWallet   = {}
   const byUsername = {}
   const byEmail    = {}
@@ -327,7 +321,6 @@ async function enrichWithCreator(campaigns) {
   }
 
   return campaigns.map(c => {
-    // Try each lookup strategy in order of reliability
     const found =
       byWallet[c.owner?.toLowerCase()] ||
       byUsername[c.ownerUsername?.toLowerCase()] ||
@@ -343,7 +336,6 @@ async function enrichWithCreator(campaigns) {
             phone: found.phone || c.ownerPhone   || '',
           }
         : {
-            // Pure fallback — use fields stored directly on the campaign
             name:  c.ownerName  || c.owner || 'Unknown',
             email: c.ownerEmail || '',
             phone: c.ownerPhone || '',

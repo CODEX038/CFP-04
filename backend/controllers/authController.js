@@ -47,18 +47,22 @@ export const register = async (req, res) => {
     if (req.files?.profilePhoto?.[0]) {
       const file = req.files.profilePhoto[0]
       const { url } = await uploadFromDisk(file.path, 'fundchain/profile-photos', {
+        originalName:   file.originalname,
         transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }],
       })
       profilePhotoUrl = url
     } else if (req.body.profilePhoto) {
-      profilePhotoUrl = req.body.profilePhoto  // base64 or URL from frontend
+      profilePhotoUrl = req.body.profilePhoto
     }
 
     // ── Upload identity document to Cloudinary (if provided) ──────────────
     let documentUrl = ''
     if (req.files?.document?.[0]) {
       const file = req.files.document[0]
-      const { url } = await uploadFromDisk(file.path, 'fundchain/user-documents')
+      /* Pass originalName so cloudinaryService detects PDF → resource_type: raw */
+      const { url } = await uploadFromDisk(file.path, 'fundchain/user-documents', {
+        originalName: file.originalname,
+      })
       documentUrl = url
     } else if (req.body.documentUrl) {
       documentUrl = req.body.documentUrl
@@ -156,20 +160,16 @@ export const verifyDocument = async (req, res) => {
 //  UPLOAD USER DOCUMENT (user self-upload to Cloudinary)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * POST /api/auth/upload-document
- * Allows logged-in user to upload their identity document to Cloudinary.
- * Body: multipart form with field 'document' + optional 'documentType'
- */
 export const uploadUserDocument = async (req, res) => {
   try {
     if (!req.file)
       return res.status(400).json({ message: 'No document file uploaded.' })
 
+    /* Pass originalName so cloudinaryService uses resource_type: raw for PDFs */
     const { url } = await uploadFromDisk(
       req.file.path,
       'fundchain/user-documents',
-      { resource_type: 'auto' }
+      { originalName: req.file.originalname }
     )
 
     const user = await User.findByIdAndUpdate(
@@ -178,7 +178,7 @@ export const uploadUserDocument = async (req, res) => {
         'document.url':    url,
         'document.type':   req.body.documentType || 'identity',
         'document.status': 'pending',
-        'document.hash':   url,  // use Cloudinary URL as hash reference
+        'document.hash':   url,
       },
       { new: true }
     ).select('-password')
@@ -194,10 +194,6 @@ export const uploadUserDocument = async (req, res) => {
 //  UPLOAD PROFILE PHOTO (user self-upload to Cloudinary)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * POST /api/auth/upload-photo
- * Allows logged-in user to upload their profile photo to Cloudinary.
- */
 export const uploadProfilePhoto = async (req, res) => {
   try {
     if (!req.file)
@@ -207,6 +203,7 @@ export const uploadProfilePhoto = async (req, res) => {
       req.file.path,
       'fundchain/profile-photos',
       {
+        originalName:   req.file.originalname,
         transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }],
       }
     )

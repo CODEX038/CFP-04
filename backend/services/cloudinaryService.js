@@ -63,7 +63,11 @@ function getResourceType(filename) {
 export async function uploadFromDisk(filePath, folder, options = {}) {
   ensureConfigured()
 
-  const resourceType = options.resource_type || getResourceType(filePath)
+  /* Multer saves temp files without extensions (e.g. multer-abc123).
+     Use originalName hint if provided, otherwise fall back to filePath. */
+  const nameHint = options.originalName || filePath
+  const resourceType = options.resource_type || getResourceType(nameHint)
+  delete options.originalName   // don't pass to Cloudinary
 
   const result = await cloudinary.uploader.upload(filePath, {
     folder,
