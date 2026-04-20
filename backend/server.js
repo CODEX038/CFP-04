@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url'
 
 // ── Route imports ─────────────────────────────────────────────────────────────
 import authRoutes                 from './routes/auth.js'
-import campaignRoutes             from './routes/campaigns.js'
+import campaignRoutes             from './routes/campaign.js'
 import verificationRoutes         from './routes/verificationRoutes.js'
 import campaignVerificationRoutes from './routes/campaignVerificationRoutes.js'
 import donationRoutes             from './routes/donationRoutes.js'
@@ -33,8 +33,6 @@ app.set('trust proxy', 1)
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
-  'https://cfp-04-4u5n.vercel.app',
-  'https://cfp-04.vercel.app',
   process.env.FRONTEND_URL,
   process.env.ADMIN_PANEL_URL,
 ].filter(Boolean).map(o => o.replace(/\/$/, ''))
@@ -44,7 +42,8 @@ app.use(cors({
     if (!origin) return cb(null, true)
     if (
       allowedOrigins.includes(origin) ||
-      origin.endsWith('.vercel.app')   ||
+      origin.endsWith('.pages.dev')    ||   // Cloudflare Pages
+      origin.endsWith('.vercel.app')    ||   // legacy
       origin.endsWith('.onrender.com')
     ) return cb(null, true)
     console.warn('[CORS] Blocked:', origin)
@@ -72,7 +71,7 @@ app.use(
   '/uploads',
   (req, res, next) => {
     const origin = req.headers.origin
-    if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app'))) {
+    if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.pages.dev') || origin.endsWith('.vercel.app'))) {
       res.header('Access-Control-Allow-Origin', origin)
     }
     res.header('Access-Control-Allow-Methods', 'GET')
