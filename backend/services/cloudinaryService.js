@@ -9,6 +9,7 @@
 import { v2 as cloudinary } from 'cloudinary'
 import { Readable } from 'stream'
 import fs from 'fs'
+import path from 'path'
 
 // ── Configure Cloudinary lazily (avoids dotenv timing issues with ES modules) ─
 let configured = false
@@ -34,6 +35,25 @@ function ensureConfigured() {
 }
 
 /**
+ * Determine the correct Cloudinary resource_type for a file.
+ * PDFs and documents must use 'raw' — Cloudinary's 'auto' sometimes
+ * misclassifies them as images, causing /image/upload/ URLs that
+ * browsers cannot render as PDFs.
+ *
+ * @param {string} filename - filename or file path
+ * @returns {'raw' | 'image' | 'video' | 'auto'}
+ */
+function getResourceType(filename) {
+  if (!filename) return 'auto'
+  const ext = path.extname(filename).toLowerCase()
+  const rawTypes = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.zip']
+  if (rawTypes.includes(ext)) return 'raw'
+  const videoTypes = ['.mp4', '.mov', '.avi', '.webm', '.mkv']
+  if (videoTypes.includes(ext)) return 'video'
+  return 'image'
+}
+
+/**
  * Upload a file from disk path to Cloudinary.
  * @param {string} filePath   - local temp file path (from multer)
  * @param {string} folder     - Cloudinary folder name
@@ -42,16 +62,24 @@ function ensureConfigured() {
  */
 export async function uploadFromDisk(filePath, folder, options = {}) {
   ensureConfigured()
+
+  const resourceType = options.resource_type || getResourceType(filePath)
+
   const result = await cloudinary.uploader.upload(filePath, {
     folder,
-    resource_type: 'auto',   // handles images + PDFs + docs
+    resource_type: resourceType,
     ...options,
   })
+
+  console.log(`[Cloudinary] Uploaded ${path.basename(filePath)} as resource_type=${resourceType} → ${result.secure_url}`)
+
   // Clean up local temp file
   try { fs.unlinkSync(filePath) } catch {}
+
   return {
-    url:      result.secure_url,
-    publicId: result.public_id,
+    url:          result.secure_url,
+    publicId:     result.public_id,
+    resourceType: result.resource_type,
   }
 }
 
@@ -59,17 +87,26 @@ export async function uploadFromDisk(filePath, folder, options = {}) {
  * Upload a file from a Buffer to Cloudinary (for in-memory multer).
  * @param {Buffer} buffer
  * @param {string} folder
+ * @param {string} originalName - original filename to detect resource type
  * @param {object} options
  * @returns {Promise<{ url: string, publicId: string }>}
  */
-export async function uploadFromBuffer(buffer, folder, options = {}) {
+export async function uploadFromBuffer(buffer, folder, originalName = '', options = {}) {
   ensureConfigured()
+
+  const resourceType = options.resource_type || getResourceType(originalName)
+
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
-      { folder, resource_type: 'auto', ...options },
+      { folder, resource_type: resourceType, ...options },
       (error, result) => {
         if (error) return reject(error)
-        resolve({ url: result.secure_url, publicId: result.public_id })
+        console.log(`[Cloudinary] Buffer upload as resource_type=${resourceType} → ${result.secure_url}`)
+        resolve({
+          url:          result.secure_url,
+          publicId:     result.public_id,
+          resourceType: result.resource_type,
+        })
       }
     )
     const readable = new Readable()
@@ -81,6 +118,7 @@ export async function uploadFromBuffer(buffer, folder, options = {}) {
 
 /**
  * Delete a file from Cloudinary by public ID.
+ * Automatically determines resource_type if not provided.
  * @param {string} publicId
  * @param {string} resourceType - 'image' | 'video' | 'raw'
  */
