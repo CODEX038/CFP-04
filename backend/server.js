@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url'
 
 // ── Route imports ─────────────────────────────────────────────────────────────
 import authRoutes                 from './routes/auth.js'
-import campaignRoutes             from './routes/campaign.js'
+import campaignRoutes             from './routes/campaigns.js'
 import verificationRoutes         from './routes/verificationRoutes.js'
 import campaignVerificationRoutes from './routes/campaignVerificationRoutes.js'
 import donationRoutes             from './routes/donationRoutes.js'
