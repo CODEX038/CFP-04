@@ -11,7 +11,14 @@ const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').r
 /* ── helpers ── */
 const resolveDocUrl = (url) => {
   if (!url) return ''
-  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    /* Fix Cloudinary PDFs — force fl_attachment flag so browser downloads
+       instead of failing to render, and use /raw/upload/ for non-image files */
+    if (url.includes('res.cloudinary.com') && url.toLowerCase().endsWith('.pdf')) {
+      return url.replace('/image/upload/', '/raw/upload/')
+    }
+    return url
+  }
   return `${BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`
 }
 
@@ -40,14 +47,27 @@ const DocumentViewer = ({ url }) => {
           <p style={{ fontSize:'0.75rem', color:'#b91c1b', fontWeight:600, margin:0 }}>PDF — {resolved.split('/').pop()}</p>
         </div>
       )}
-      <button onClick={() => window.open(resolved, '_blank', 'noopener,noreferrer')}
-        style={{
-          width:'100%', padding:'8px', borderRadius:10,
-          background:'#7c3aed', color:'#fff', border:'none', cursor:'pointer',
-          fontSize:'0.75rem', fontWeight:600, fontFamily:"'Poppins',sans-serif",
-        }}>
-        {isPDF ? '📄 Open PDF' : '🖼 View document'}
-      </button>
+      <div style={{ display:'flex', gap:6 }}>
+        <button onClick={() => window.open(resolved, '_blank', 'noopener,noreferrer')}
+          style={{
+            flex:1, padding:'8px', borderRadius:10,
+            background:'#7c3aed', color:'#fff', border:'none', cursor:'pointer',
+            fontSize:'0.75rem', fontWeight:600, fontFamily:"'Poppins',sans-serif",
+          }}>
+          {isPDF ? '📄 Open PDF' : '🖼 View document'}
+        </button>
+        {isPDF && (
+          <button
+            onClick={() => window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(resolved)}&embedded=false`, '_blank', 'noopener,noreferrer')}
+            style={{
+              flex:1, padding:'8px', borderRadius:10,
+              background:'#1a73e8', color:'#fff', border:'none', cursor:'pointer',
+              fontSize:'0.75rem', fontWeight:600, fontFamily:"'Poppins',sans-serif",
+            }}>
+            📋 Google Viewer
+          </button>
+        )}
+      </div>
     </div>
   )
 }
